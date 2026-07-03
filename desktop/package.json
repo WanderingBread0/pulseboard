@@ -5,6 +5,7 @@
   "private": true,
   "description": "Free, self-contained process quality dashboard — inspections, defects, tasks and Six Sigma analytics, all stored locally.",
   "author": "PulseBoard contributors",
+  "homepage": "https://github.com/WanderingBread0/pulseboard",
   "license": "MIT",
   "main": "main.js",
   "scripts": {
