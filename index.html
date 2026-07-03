@@ -1,0 +1,1790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="PulseBoard — a free, self-contained process quality dashboard. Track inspections, defects, and recurring tasks for anything: sites, stores, schools, machines, teams.">
+<title>PulseBoard — Process Quality Dashboard</title>
+<script src="./chart.min.js"></script>
+<style>
+:root{
+  --page:#0d0d0d; --surface:#1a1a19; --surface-2:#232322; --surface-3:#2c2c2a;
+  --border:rgba(255,255,255,0.10); --grid:#2c2c2a; --axis:#383835;
+  --text:#ffffff; --text-2:#c3c2b7; --muted:#898781;
+  --s1:#3987e5; --s2:#199e70; --s3:#c98500; --s5:#9085e9; --s6:#e66767;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+  --radius:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--page);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.5}
+button{font:inherit;cursor:pointer}
+input,select,textarea{font:inherit}
+
+/* ---------- layout ---------- */
+.app{display:flex;min-height:100vh}
+.sidebar{width:232px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{padding:20px 18px 14px;border-bottom:1px solid var(--border)}
+.brand .logo{font-size:17px;font-weight:700;letter-spacing:.2px}
+.brand .logo .dot{color:var(--s1)}
+#org-name{color:var(--text-2);font-size:12.5px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav{padding:10px;display:flex;flex-direction:column;gap:2px;flex:1}
+.nav-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);padding:12px 10px 4px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:var(--text-2);cursor:pointer;user-select:none;border:none;background:none;width:100%;text-align:left;font-size:13.5px}
+.nav-item:hover{background:var(--surface-2);color:var(--text)}
+.nav-item.active{background:rgba(57,135,229,0.14);color:#8fc0f5;font-weight:600}
+.nav-item .ic{width:18px;text-align:center;flex-shrink:0}
+.side-foot{padding:14px 18px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted)}
+.side-foot a{color:var(--muted)}
+main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{padding:20px 26px 0}
+#page-title{font-size:21px;font-weight:700}
+#page-sub{color:var(--muted);font-size:13px;margin-top:2px}
+.content{padding:18px 26px 40px;display:flex;flex-direction:column;gap:16px}
+.page{display:none}
+.page.active{display:flex;flex-direction:column;gap:16px}
+
+/* ---------- cards & grids ---------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+.card h3{font-size:13.5px;font-weight:600;color:var(--text-2);margin-bottom:12px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-4{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px}
+.chart-box{position:relative;height:280px}
+.chart-box.tall{height:320px}
+.chart-empty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--muted);font-size:13px;text-align:center;padding:20px}
+.chart-box.is-empty canvas{display:none}
+.chart-box.is-empty .chart-empty{display:flex}
+
+/* ---------- stat tiles ---------- */
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.tile .lbl{font-size:12px;color:var(--muted)}
+.tile .val{font-size:26px;font-weight:600;line-height:1.2}
+.tile .sub{font-size:12px;color:var(--text-2)}
+.tile .sub.up-good{color:var(--good)}
+.tile .sub.down-bad{color:var(--s6)}
+.hero{font-size:52px;font-weight:600;line-height:1.1}
+.meter{height:8px;border-radius:4px;background:rgba(57,135,229,0.18);overflow:hidden;margin-top:8px}
+.meter>div{height:100%;border-radius:4px;background:var(--s1);transition:width .3s}
+
+/* ---------- toolbar / filters ---------- */
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.toolbar .spacer{flex:1}
+.btn{background:var(--s1);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:600;font-size:13px}
+.btn:hover{background:#4d94ea}
+.btn-ghost{background:var(--surface-2);color:var(--text-2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px}
+.btn-ghost:hover{color:var(--text);background:var(--surface-3)}
+.btn-danger{background:rgba(208,59,59,0.16);color:#f08c8c;border:1px solid rgba(208,59,59,0.4);border-radius:8px;padding:8px 14px;font-size:13px}
+.btn-danger:hover{background:rgba(208,59,59,0.28)}
+.btn-sm{padding:4px 9px;font-size:12px;border-radius:6px}
+
+/* ---------- forms ---------- */
+input[type=text],input[type=number],input[type=date],select,textarea{
+  background:var(--surface-2);border:1px solid var(--border);border-radius:8px;color:var(--text);
+  padding:8px 10px;width:100%;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--s1)}
+textarea{resize:vertical;min-height:64px}
+.frm{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.frm .full{grid-column:1/-1}
+.fld label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.form-card{display:none;border-color:rgba(57,135,229,0.35)}
+.form-card.open{display:block}
+.form-actions{display:flex;gap:10px;margin-top:14px}
+input[type=range]{width:100%;accent-color:var(--s1)}
+.score-read{font-size:15px;font-weight:600;margin-top:4px}
+.seg{display:flex;gap:6px}
+.seg input{display:none}
+.seg label{flex:1;text-align:center;padding:8px 4px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);cursor:pointer;font-size:13px}
+.seg input:checked+label{font-weight:700;color:#fff}
+.seg input:checked+label.pri-High{background:rgba(208,59,59,0.3);border-color:var(--crit)}
+.seg input:checked+label.pri-Medium{background:rgba(250,178,25,0.22);border-color:var(--warn)}
+.seg input:checked+label.pri-Low{background:var(--surface-3);border-color:var(--muted)}
+
+/* ---------- tables ---------- */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--grid);color:var(--text-2);vertical-align:top}
+td.num{font-variant-numeric:tabular-nums}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:20px;white-space:nowrap}
+.b-Pass{background:rgba(12,163,12,0.16);color:#5ecf5e}
+.b-Marginal{background:rgba(250,178,25,0.14);color:var(--warn)}
+.b-Fail{background:rgba(208,59,59,0.18);color:#f08c8c}
+.b-High{background:rgba(208,59,59,0.18);color:#f08c8c}
+.b-Medium{background:rgba(250,178,25,0.14);color:var(--warn)}
+.b-Low{background:var(--surface-3);color:var(--text-2)}
+.b-Open{background:rgba(236,131,90,0.16);color:var(--serious)}
+.b-InProgress{background:rgba(250,178,25,0.14);color:var(--warn)}
+.b-Resolved{background:rgba(12,163,12,0.16);color:#5ecf5e}
+.row-act{display:flex;gap:6px;justify-content:flex-end}
+.icon-btn{background:none;border:none;color:var(--muted);font-size:14px;padding:2px 5px;border-radius:6px}
+.icon-btn:hover{color:var(--text);background:var(--surface-2)}
+select.mini{width:auto;padding:3px 6px;font-size:12px;border-radius:6px}
+
+/* ---------- chips ---------- */
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.chip{display:inline-flex;align-items:center;gap:7px;background:var(--surface-2);border:1px solid var(--border);border-radius:20px;padding:4px 6px 4px 12px;font-size:12.5px;color:var(--text-2)}
+.chip button{background:none;border:none;color:var(--muted);font-size:13px;line-height:1;padding:2px 5px;border-radius:50%}
+.chip button:hover{color:#f08c8c}
+.chip-add{display:flex;gap:8px;max-width:380px}
+.preset{background:var(--surface-2);border:1px solid var(--border);border-radius:20px;padding:6px 14px;color:var(--text-2);font-size:13px}
+.preset:hover,.preset.sel{border-color:var(--s1);color:#8fc0f5;background:rgba(57,135,229,0.1)}
+
+/* ---------- lists ---------- */
+.task-row{display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--grid);flex-wrap:wrap}
+.task-row .t-main{flex:1;min-width:180px}
+.task-row .t-name{font-weight:600;color:var(--text)}
+.task-row .t-meta{font-size:12px;color:var(--muted)}
+.task-row.overdue .t-name{color:#f08c8c}
+.act-row{display:flex;gap:10px;padding:9px 2px;border-bottom:1px solid var(--grid);font-size:13px;color:var(--text-2);align-items:baseline}
+.act-row .when{color:var(--muted);font-size:12px;white-space:nowrap;min-width:74px;font-variant-numeric:tabular-nums}
+
+/* ---------- kpi editor ---------- */
+.kpi-edit-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.2fr auto;gap:8px;margin-bottom:8px;align-items:center}
+
+/* ---------- empty states ---------- */
+.empty-state{text-align:center;padding:44px 20px;color:var(--muted)}
+.empty-state .big{font-size:34px;margin-bottom:10px}
+.empty-state p{margin-bottom:16px}
+
+/* ---------- toast ---------- */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:10px 20px;border-radius:10px;font-size:13.5px;transition:transform .25s;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+#toast.show{transform:translateX(-50%) translateY(0)}
+
+/* ---------- modal / wizard ---------- */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.65);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.modal-backdrop.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;max-width:560px;width:100%;padding:28px;max-height:90vh;overflow-y:auto}
+.modal h2{font-size:19px;margin-bottom:4px}
+.modal .lead{color:var(--text-2);font-size:13.5px;margin-bottom:18px}
+.wiz-step{display:none}
+.wiz-step.active{display:block}
+#wiz-dots{display:flex;gap:6px;margin-bottom:18px}
+#wiz-dots span{width:26px;height:4px;border-radius:2px;background:var(--surface-3)}
+#wiz-dots span.on{background:var(--s1)}
+.wiz-nav{display:flex;gap:10px;margin-top:22px;justify-content:flex-end}
+.choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+.choice{border:1px solid var(--border);border-radius:12px;background:var(--surface-2);padding:16px;text-align:left;color:var(--text-2)}
+.choice:hover{border-color:var(--s1)}
+.choice .c-t{font-weight:700;color:var(--text);margin-bottom:3px}
+.choice .c-s{font-size:12px;color:var(--muted)}
+
+/* ---------- settings sections ---------- */
+.set-sec{border-bottom:1px solid var(--grid);padding:16px 0}
+.set-sec:first-child{padding-top:0}
+.set-sec:last-child{border-bottom:none}
+.set-sec h4{font-size:13px;margin-bottom:10px;color:var(--text)}
+.set-sec .hint{font-size:12px;color:var(--muted);margin-bottom:8px}
+
+@media(max-width:920px){
+  .app{flex-direction:column}
+  .sidebar{width:100%;height:auto;position:static;border-right:none;border-bottom:1px solid var(--border)}
+  .nav{flex-direction:row;overflow-x:auto;padding:8px}
+  .nav-label{display:none}
+  .nav-item{white-space:nowrap;width:auto}
+  .side-foot{display:none}
+  .grid-2{grid-template-columns:1fr}
+  .content,.topbar{padding-left:16px;padding-right:16px}
+  .kpi-edit-row{grid-template-columns:1fr 1fr;}
+}
+</style>
+</head>
+<body>
+<noscript><p style="padding:30px">PulseBoard needs JavaScript enabled to run. All data stays in your browser.</p></noscript>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">Pulse<span class="dot">Board</span></div>
+      <div id="org-name">My Organization</div>
+    </div>
+    <nav class="nav">
+      <div class="nav-label">Monitor</div>
+      <button class="nav-item active" data-page="overview"><span class="ic">◈</span> Overview</button>
+      <button class="nav-item" data-page="analytics"><span class="ic">σ</span> Six Sigma Analytics</button>
+      <div class="nav-label">Records</div>
+      <button class="nav-item" data-page="inspections"><span class="ic">✓</span> Inspections</button>
+      <button class="nav-item" data-page="defects"><span class="ic">⚠</span> Defects</button>
+      <button class="nav-item" data-page="tasks"><span class="ic">↻</span> Recurring Tasks</button>
+      <div class="nav-label">Manage</div>
+      <button class="nav-item" data-page="data"><span class="ic">⇅</span> Data &amp; Backup</button>
+      <button class="nav-item" data-page="settings"><span class="ic">⚙</span> Settings</button>
+    </nav>
+    <div class="side-foot">PulseBoard v1.0 · local‑only, no server</div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <div id="page-title">Overview</div>
+      <div id="page-sub"></div>
+    </div>
+    <div class="content">
+
+    <!-- ============ OVERVIEW ============ -->
+    <section class="page active" id="page-overview">
+      <div id="ov-empty" class="card empty-state" style="display:none">
+        <div class="big">◈</div>
+        <p><strong>No data yet.</strong><br>Log your first inspection or defect — or load sample data to explore the dashboard.</p>
+        <button class="btn" id="btn-ov-sample">Load sample data</button>
+      </div>
+      <div id="ov-content" style="display:contents">
+        <div class="grid-4" id="kpi-row"></div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Average inspection score by month</h3>
+            <div class="chart-box" id="box-ov-trend"><canvas id="ch-ov-trend"></canvas><div class="chart-empty">No inspections logged yet</div></div>
+          </div>
+          <div class="card">
+            <h3>Defect Pareto — share by category</h3>
+            <div class="chart-box" id="box-ov-pareto"><canvas id="ch-ov-pareto"></canvas><div class="chart-empty">No defects reported — nothing to chart 🎉</div></div>
+          </div>
+          <div class="card">
+            <h3>Open defects by <span class="u-sing">Site</span></h3>
+            <div class="chart-box" id="box-ov-unit"><canvas id="ch-ov-unit"></canvas><div class="chart-empty">No open defects 🎉</div></div>
+          </div>
+          <div class="card">
+            <h3>Defect priority mix</h3>
+            <div class="chart-box" id="box-ov-pri"><canvas id="ch-ov-pri"></canvas><div class="chart-empty">No defects reported</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Recent activity</h3>
+          <div id="ov-activity"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ INSPECTIONS ============ -->
+    <section class="page" id="page-inspections">
+      <div class="toolbar">
+        <select id="insp-f-unit" style="width:auto"></select>
+        <input type="text" id="insp-f-search" placeholder="Search notes, area, inspector…" style="width:230px">
+        <div class="spacer"></div>
+        <button class="btn" id="btn-insp-new">＋ Log inspection</button>
+      </div>
+
+      <div class="card form-card" id="insp-form-card">
+        <h3 id="insp-form-title">Log inspection</h3>
+        <div class="frm">
+          <div class="fld"><label>Date</label><input type="date" id="insp-date"></div>
+          <div class="fld"><label class="u-sing">Site</label><input type="text" id="insp-unit" list="dl-units" placeholder="Type or pick…"></div>
+          <div class="fld"><label>Area</label><input type="text" id="insp-area" list="dl-areas" placeholder="e.g. Restrooms"></div>
+          <div class="fld"><label>Inspector</label><input type="text" id="insp-inspector" list="dl-people" placeholder="Who inspected?"></div>
+          <div class="fld full"><label>Score</label>
+            <input type="range" id="insp-score" min="0" max="100" value="90">
+            <div class="score-read" id="insp-score-val"></div>
+          </div>
+          <div class="fld full"><label>Notes</label><textarea id="insp-notes" placeholder="Optional findings, follow-ups…"></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn" id="btn-insp-save">Save inspection</button>
+          <button class="btn-ghost" id="btn-insp-cancel">Cancel</button>
+        </div>
+      </div>
+
+      <div class="grid-4" id="insp-stats"></div>
+
+      <div class="card">
+        <h3>Average score by <span class="u-sing">Site</span></h3>
+        <div class="chart-box" id="box-insp-unit"><canvas id="ch-insp-unit"></canvas><div class="chart-empty">No inspections yet — log one above</div></div>
+      </div>
+
+      <div class="card">
+        <h3>Inspection log</h3>
+        <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Date</th><th class="u-sing">Site</th><th>Area</th><th>Inspector</th><th>Score</th><th>Result</th><th>Notes</th><th></th></tr></thead>
+          <tbody id="insp-tbody"></tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DEFECTS ============ -->
+    <section class="page" id="page-defects">
+      <div class="toolbar">
+        <select id="def-f-unit" style="width:auto"></select>
+        <select id="def-f-status" style="width:auto">
+          <option value="">All statuses</option><option>Open</option><option>In Progress</option><option>Resolved</option>
+        </select>
+        <select id="def-f-priority" style="width:auto">
+          <option value="">All priorities</option><option>High</option><option>Medium</option><option>Low</option>
+        </select>
+        <select id="def-f-category" style="width:auto"></select>
+        <div class="spacer"></div>
+        <button class="btn" id="btn-def-new">＋ Report defect</button>
+      </div>
+
+      <div class="card form-card" id="def-form-card">
+        <h3 id="def-form-title">Report defect</h3>
+        <div class="frm">
+          <div class="fld"><label>Date found</label><input type="date" id="def-date"></div>
+          <div class="fld"><label class="u-sing">Site</label><input type="text" id="def-unit" list="dl-units" placeholder="Where?"></div>
+          <div class="fld"><label>Category</label><input type="text" id="def-category" list="dl-categories" placeholder="Type or pick…"></div>
+          <div class="fld"><label>Assigned to</label><input type="text" id="def-assignee" list="dl-people" placeholder="Optional"></div>
+          <div class="fld"><label>Priority</label>
+            <div class="seg">
+              <input type="radio" name="defpri" id="pri-high" value="High"><label for="pri-high" class="pri-High">High</label>
+              <input type="radio" name="defpri" id="pri-med" value="Medium" checked><label for="pri-med" class="pri-Medium">Medium</label>
+              <input type="radio" name="defpri" id="pri-low" value="Low"><label for="pri-low" class="pri-Low">Low</label>
+            </div>
+          </div>
+          <div class="fld"><label>Status</label>
+            <select id="def-status"><option>Open</option><option>In Progress</option><option>Resolved</option></select>
+          </div>
+          <div class="fld full"><label>Description</label><textarea id="def-notes" placeholder="What's wrong?"></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn" id="btn-def-save">Save defect</button>
+          <button class="btn-ghost" id="btn-def-cancel">Cancel</button>
+        </div>
+      </div>
+
+      <div class="grid-4" id="def-stats"></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3>Status breakdown</h3>
+          <div class="chart-box" id="box-def-status"><canvas id="ch-def-status"></canvas><div class="chart-empty">No defects match the current filters</div></div>
+        </div>
+        <div class="card">
+          <h3>Defects by category</h3>
+          <div class="chart-box" id="box-def-cat"><canvas id="ch-def-cat"></canvas><div class="chart-empty">No defects match the current filters</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Defect log</h3>
+        <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Date</th><th class="u-sing">Site</th><th>Category</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Description</th><th></th></tr></thead>
+          <tbody id="def-tbody"></tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TASKS ============ -->
+    <section class="page" id="page-tasks">
+      <div class="toolbar">
+        <div class="spacer"></div>
+        <button class="btn" id="btn-task-new">＋ Add task</button>
+      </div>
+
+      <div class="card form-card" id="task-form-card">
+        <h3 id="task-form-title">Add recurring task</h3>
+        <div class="frm">
+          <div class="fld full"><label>Task</label><input type="text" id="task-name" placeholder="e.g. Deep-clean floors, filter replacement, monthly audit…"></div>
+          <div class="fld"><label class="u-sing">Site</label><input type="text" id="task-unit" list="dl-units"></div>
+          <div class="fld"><label>Next due</label><input type="date" id="task-due"></div>
+          <div class="fld"><label>Frequency</label>
+            <select id="task-freq"><option>One-time</option><option>Daily</option><option selected>Weekly</option><option>Monthly</option><option>Quarterly</option></select>
+          </div>
+          <div class="fld"><label>Assigned to</label><input type="text" id="task-assignee" list="dl-people"></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn" id="btn-task-save">Save task</button>
+          <button class="btn-ghost" id="btn-task-cancel">Cancel</button>
+        </div>
+      </div>
+
+      <div class="grid-4" id="task-stats"></div>
+
+      <div class="card">
+        <h3>Task list</h3>
+        <div id="task-list"></div>
+      </div>
+    </section>
+
+    <!-- ============ ANALYTICS ============ -->
+    <section class="page" id="page-analytics">
+      <div class="grid-2">
+        <div class="card">
+          <h3>Process sigma level</h3>
+          <div class="hero" id="an-sigma">—</div>
+          <div class="sub" style="color:var(--text-2);margin-top:6px" id="an-dpmo">Log inspections to compute DPMO</div>
+          <div class="sub" style="color:var(--muted);margin-top:10px;font-size:12px">Computed from your inspection pass rate (score ≥ pass threshold), with the standard 1.5σ long-term shift.</div>
+        </div>
+        <div class="grid-4" style="grid-template-columns:1fr 1fr;align-content:start">
+          <div class="tile"><div class="lbl">First-pass yield</div><div class="val" id="an-pass">—</div><div class="sub">inspections at or above pass threshold</div></div>
+          <div class="tile"><div class="lbl">Avg days to resolve</div><div class="val" id="an-mttr">—</div><div class="sub">resolved defects, found → fixed</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Control chart — individual inspection scores (I-chart)</h3>
+        <div class="chart-box tall" id="box-an-control"><canvas id="ch-an-control"></canvas><div class="chart-empty">Needs at least 5 inspections</div></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:8px" id="an-control-note"></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3>Defects reported by month</h3>
+          <div class="chart-box" id="box-an-defects"><canvas id="ch-an-defects"></canvas><div class="chart-empty">No defects reported yet</div></div>
+        </div>
+        <div class="card">
+          <h3>Defect Pareto — share by category</h3>
+          <div class="chart-box" id="box-an-pareto"><canvas id="ch-an-pareto"></canvas><div class="chart-empty">No defects reported yet</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DATA ============ -->
+    <section class="page" id="page-data">
+      <div class="card">
+        <h3>Your data, at a glance</h3>
+        <div id="data-summary" style="color:var(--text-2);font-size:13.5px"></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Export</h3>
+          <p style="color:var(--muted);font-size:12.5px;margin-bottom:12px">Everything lives in this browser's local storage. Export a JSON backup regularly, or pull CSVs into Excel / Sheets.</p>
+          <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+            <button class="btn" id="btn-exp-json">⬇ Download full backup (JSON)</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn-ghost" id="btn-exp-insp-csv">Inspections CSV</button>
+              <button class="btn-ghost" id="btn-exp-def-csv">Defects CSV</button>
+              <button class="btn-ghost" id="btn-exp-task-csv">Tasks CSV</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Import / restore</h3>
+          <p style="color:var(--muted);font-size:12.5px;margin-bottom:12px">Restore a JSON backup — this replaces the data currently in this browser.</p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="file" id="imp-file" accept=".json,application/json" style="width:auto;flex:1;min-width:180px">
+            <button class="btn" id="btn-imp-json">Import backup</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Danger zone</h3>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn-ghost" id="btn-load-sample">Load sample data</button>
+          <button class="btn-danger" id="btn-clear-data">Clear all records</button>
+          <button class="btn-danger" id="btn-reset-all">Factory reset (records + settings)</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section class="page" id="page-settings">
+      <div class="card">
+        <div class="set-sec">
+          <h4>Organization</h4>
+          <div class="frm">
+            <div class="fld"><label>Organization / team name</label><input type="text" id="set-org"></div>
+          </div>
+        </div>
+        <div class="set-sec">
+          <h4>What do you track?</h4>
+          <div class="hint">This renames the location field everywhere — "Site", "School", "Store", "Machine", "Client"… anything.</div>
+          <div class="frm">
+            <div class="fld"><label>Singular (e.g. Store)</label><input type="text" id="set-sing"></div>
+            <div class="fld"><label>Plural (e.g. Stores)</label><input type="text" id="set-plur"></div>
+          </div>
+        </div>
+        <div class="set-sec">
+          <h4>Scoring thresholds</h4>
+          <div class="hint">An inspection passes at or above the pass threshold; below the marginal threshold it fails; in between it's marginal.</div>
+          <div class="frm">
+            <div class="fld"><label>Pass at ≥</label><input type="number" id="set-pass" min="1" max="100"></div>
+            <div class="fld"><label>Marginal down to ≥</label><input type="number" id="set-marginal" min="0" max="99"></div>
+          </div>
+        </div>
+        <div class="form-actions"><button class="btn" id="btn-save-settings">Save settings</button></div>
+      </div>
+
+      <div class="card">
+        <div class="set-sec">
+          <h4>Your <span class="u-plur">Sites</span></h4>
+          <div class="hint">New values typed into any form are added here automatically.</div>
+          <div class="chips" id="chips-units"></div>
+          <div class="chip-add"><input type="text" id="new-unit" placeholder="Add one…"><button class="btn-ghost" id="btn-add-unit">Add</button></div>
+        </div>
+        <div class="set-sec">
+          <h4>Defect categories</h4>
+          <div class="chips" id="chips-categories"></div>
+          <div class="chip-add"><input type="text" id="new-category" placeholder="Add one…"><button class="btn-ghost" id="btn-add-category">Add</button></div>
+        </div>
+        <div class="set-sec">
+          <h4>Inspection areas</h4>
+          <div class="chips" id="chips-areas"></div>
+          <div class="chip-add"><input type="text" id="new-area" placeholder="Add one…"><button class="btn-ghost" id="btn-add-area">Add</button></div>
+        </div>
+        <div class="set-sec">
+          <h4>People (inspectors &amp; assignees)</h4>
+          <div class="chips" id="chips-people"></div>
+          <div class="chip-add"><input type="text" id="new-person" placeholder="Add one…"><button class="btn-ghost" id="btn-add-person">Add</button></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="set-sec">
+          <h4>Custom KPI tiles</h4>
+          <div class="hint">Extra numbers you want on the Overview — anything you track outside this tool (cost per sq ft, uptime %, NPS…). "Good direction" controls whether beating the target shows green.</div>
+          <div id="kpi-editor"></div>
+          <div style="display:flex;gap:10px;margin-top:10px">
+            <button class="btn-ghost" id="btn-add-kpi">＋ Add KPI</button>
+            <button class="btn" id="btn-save-kpis">Save KPIs</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    </div><!-- /content -->
+  </main>
+</div>
+
+<!-- datalists -->
+<datalist id="dl-units"></datalist>
+<datalist id="dl-categories"></datalist>
+<datalist id="dl-areas"></datalist>
+<datalist id="dl-people"></datalist>
+
+<div id="toast"></div>
+
+<!-- ============ SETUP WIZARD ============ -->
+<div class="modal-backdrop" id="wizard">
+  <div class="modal">
+    <div id="wiz-dots"><span class="on"></span><span></span><span></span></div>
+
+    <div class="wiz-step active" id="wiz-s1">
+      <h2>Welcome to PulseBoard 👋</h2>
+      <p class="lead">A private, local-only quality dashboard. Two quick questions and you're in — everything can be changed later in Settings.</p>
+      <div class="fld" style="margin-bottom:16px"><label>Organization or team name</label><input type="text" id="wiz-org" placeholder="e.g. Facilities Team, Acme Ops"></div>
+      <div class="fld"><label>What do you track quality across?</label>
+        <div class="chips" id="wiz-presets">
+          <button class="preset" data-s="Site" data-p="Sites">Sites</button>
+          <button class="preset" data-s="Building" data-p="Buildings">Buildings</button>
+          <button class="preset" data-s="School" data-p="Schools">Schools</button>
+          <button class="preset" data-s="Store" data-p="Stores">Stores</button>
+          <button class="preset" data-s="Machine" data-p="Machines">Machines</button>
+          <button class="preset" data-s="Team" data-p="Teams">Teams</button>
+          <button class="preset" data-s="Client" data-p="Clients">Clients</button>
+        </div>
+        <div class="frm" style="margin-top:8px">
+          <div class="fld"><label>Singular</label><input type="text" id="wiz-sing" value="Site"></div>
+          <div class="fld"><label>Plural</label><input type="text" id="wiz-plur" value="Sites"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wiz-step" id="wiz-s2">
+      <h2>Name your <span class="u-plur" id="wiz-s2-label">Sites</span></h2>
+      <p class="lead">One per line. Skip this and just type them into forms later — new names are learned automatically.</p>
+      <div class="fld"><label>List (optional)</label><textarea id="wiz-units" rows="5" placeholder="North Building&#10;South Building&#10;Annex"></textarea></div>
+      <div class="fld" style="margin-top:12px"><label>Defect categories (pre-filled — edit freely)</label><textarea id="wiz-cats" rows="5">Cleanliness
+Safety
+Equipment
+Supplies
+Documentation</textarea></div>
+    </div>
+
+    <div class="wiz-step" id="wiz-s3">
+      <h2>How do you want to start?</h2>
+      <p class="lead">Sample data is clearly fake and can be cleared any time from Data &amp; Backup.</p>
+      <div class="choice-grid">
+        <button class="choice" id="wiz-sample">
+          <div class="c-t">🧪 Explore with sample data</div>
+          <div class="c-s">6 months of realistic inspections, defects &amp; tasks so every chart is alive.</div>
+        </button>
+        <button class="choice" id="wiz-empty">
+          <div class="c-t">✨ Start clean</div>
+          <div class="c-s">Empty dashboard — log your first inspection in under a minute.</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="wiz-nav">
+      <button class="btn-ghost" id="wiz-back" style="display:none">Back</button>
+      <button class="btn" id="wiz-next">Next</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================================================================
+   PulseBoard — single-file process quality dashboard
+   Data model: localStorage only. Keys are versioned (pb_*_v1).
+   ================================================================ */
+
+/* ---------------- storage ---------------- */
+const LS = {
+  config: 'pb_config_v1',
+  inspections: 'pb_inspections_v1',
+  defects: 'pb_defects_v1',
+  tasks: 'pb_tasks_v1'
+};
+function load(key, fb){ try{ const r = localStorage.getItem(key); return r ? JSON.parse(r) : fb; }catch(e){ return fb; } }
+function save(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); return true; }catch(e){ toast('⚠ Could not save — storage full or blocked'); return false; } }
+
+const DEFAULT_CONFIG = {
+  setupDone: false,
+  orgName: 'My Organization',
+  unitSingular: 'Site',
+  unitPlural: 'Sites',
+  units: [],
+  categories: ['Cleanliness','Safety','Equipment','Supplies','Documentation'],
+  areas: [],
+  people: [],
+  passThreshold: 85,
+  marginalThreshold: 75,
+  kpis: []
+};
+/* Coerce any loaded/imported config to the exact shape the app expects —
+   a hand-edited or hostile backup must never persist a state that crashes boot. */
+function sanitizeConfig(raw){
+  const c = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  if(!raw || typeof raw !== 'object') return c;
+  c.setupDone = !!raw.setupDone;
+  ['orgName','unitSingular','unitPlural'].forEach(k => { if(typeof raw[k] === 'string' && raw[k].trim()) c[k] = raw[k].trim(); });
+  ['units','categories','areas','people'].forEach(k => { if(Array.isArray(raw[k])) c[k] = raw[k].map(x => sanStr(x).trim()).filter(Boolean); });
+  c.passThreshold = sanNum(raw.passThreshold, 1, 100, c.passThreshold);
+  c.marginalThreshold = sanNum(raw.marginalThreshold, 0, c.passThreshold - 1, Math.min(c.marginalThreshold, c.passThreshold - 1));
+  if(Array.isArray(raw.kpis)) c.kpis = raw.kpis.filter(k => k && typeof k === 'object').map(k => ({
+    label: sanStr(k.label), value: sanStr(k.value), suffix: sanStr(k.suffix),
+    target: sanStr(k.target), dir: k.dir === 'down' ? 'down' : 'up' }));
+  return c;
+}
+let CFG = sanitizeConfig(load(LS.config, null));
+function saveConfig(){ save(LS.config, CFG); applyLabels(); refreshDatalists(); }
+
+function getInspections(){ return load(LS.inspections, []); }
+function getDefects(){ return load(LS.defects, []); }
+function getTasks(){ return load(LS.tasks, []); }
+function setInspections(v){ return save(LS.inspections, v); }
+function setDefects(v){ return save(LS.defects, v); }
+function setTasks(v){ return save(LS.tasks, v); }
+
+/* ---------------- helpers ---------------- */
+const $ = id => document.getElementById(id);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+function pad2(n){ return String(n).padStart(2,'0'); }
+function localDateStr(d){ return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()); }
+function todayStr(){ return localDateStr(new Date()); }
+function daysAgoStr(n){ const d = new Date(); d.setDate(d.getDate() - n); return localDateStr(d); }
+function monthKey(dateStr){ return (dateStr || '').slice(0,7); }
+function monthLabel(key){ const [y,m] = key.split('-').map(Number); return new Date(y, m-1, 1).toLocaleDateString(undefined, {month:'short', year:'2-digit'}); }
+/* contiguous month keys from the first data month through today (or the last data
+   month if it's in the future), so zero-record months still appear in trends */
+function monthSeq(sortedKeys){
+  if(!sortedKeys.length) return [];
+  let [y, m] = sortedKeys[0].split('-').map(Number);
+  let endK = monthKey(todayStr());
+  const lastK = sortedKeys[sortedKeys.length - 1];
+  if(lastK > endK) endK = lastK;
+  const [ey, em] = endK.split('-').map(Number);
+  if(!y || !m || !ey || !em) return sortedKeys.slice(-12);
+  const out = [];
+  let guard = 0;
+  while((y < ey || (y === ey && m <= em)) && guard++ < 400){
+    out.push(y + '-' + pad2(m));
+    if(++m > 12){ m = 1; y++; }
+  }
+  return out.slice(-12);
+}
+function fmtDate(dateStr){
+  if(!dateStr) return '—';
+  const [y,m,d] = dateStr.split('-').map(Number);
+  if(!y || !m || !d) return esc(dateStr);
+  return new Date(y, m-1, d).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'});
+}
+function daysBetween(a, b){ // a,b = YYYY-MM-DD; b - a in days
+  const [ay,am,ad] = a.split('-').map(Number), [by,bm,bd] = b.split('-').map(Number);
+  return Math.round((new Date(by,bm-1,bd) - new Date(ay,am-1,ad)) / 86400000);
+}
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._h); toast._h = setTimeout(() => t.classList.remove('show'), 2400);
+}
+function scoreStatus(score){
+  const s = Number(score);
+  if(s >= CFG.passThreshold) return 'Pass';
+  if(s >= CFG.marginalThreshold) return 'Marginal';
+  return 'Fail';
+}
+/* Learn a value into a config list and return its canonical casing, so records,
+   suggestion lists and exact-match filters always agree ("annex" vs "Annex"). */
+function learnValue(listKey, value){
+  const v = String(value || '').trim();
+  if(!v) return '';
+  const hit = CFG[listKey].find(x => x.toLowerCase() === v.toLowerCase());
+  if(hit) return hit;
+  CFG[listKey].push(v);
+  saveConfig();
+  return v;
+}
+function sanStr(v){ return typeof v === 'string' ? v : (v == null ? '' : String(v)); }
+function sanDate(v){ const s = sanStr(v).slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ''; }
+function sanId(v){ const s = sanStr(v); return /^[A-Za-z0-9_-]{1,40}$/.test(s) ? s : uid(); }
+function sanNum(v, lo, hi, fb){ const n = Number(v); return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fb; }
+function sanEnum(v, list, fb){ return list.includes(v) ? v : fb; }
+function sanRecords(arr, mapFn){ return (Array.isArray(arr) ? arr : []).filter(r => r && typeof r === 'object').map(mapFn); }
+function sanitizeInspections(arr){ return sanRecords(arr, r => ({ id: sanId(r.id), date: sanDate(r.date) || todayStr(),
+  unit: sanStr(r.unit), area: sanStr(r.area), inspector: sanStr(r.inspector),
+  score: sanNum(r.score, 0, 100, 0), notes: sanStr(r.notes), created: sanNum(r.created, 0, 9e15, 0) })); }
+function sanitizeDefects(arr){ return sanRecords(arr, r => ({ id: sanId(r.id), date: sanDate(r.date) || todayStr(),
+  unit: sanStr(r.unit), category: sanStr(r.category) || 'Uncategorized',
+  priority: sanEnum(r.priority, ['High','Medium','Low'], 'Medium'),
+  status: sanEnum(r.status, ['Open','In Progress','Resolved'], 'Open'),
+  assignee: sanStr(r.assignee), notes: sanStr(r.notes), resolved: sanDate(r.resolved) || null,
+  created: sanNum(r.created, 0, 9e15, 0) })); }
+function sanitizeTasks(arr){ return sanRecords(arr, r => ({ id: sanId(r.id), name: sanStr(r.name) || 'Untitled task',
+  unit: sanStr(r.unit), due: sanDate(r.due) || todayStr(),
+  freq: sanEnum(r.freq, ['One-time','Daily','Weekly','Monthly','Quarterly'], 'One-time'),
+  status: sanEnum(r.status, ['Scheduled','Done'], 'Scheduled'), assignee: sanStr(r.assignee) })); }
+
+/* inverse normal CDF (Acklam's approximation) → sigma level */
+function normInv(p){
+  if(p <= 0 || p >= 1) return NaN;
+  const a=[-3.969683028665376e+01,2.209460984245205e+02,-2.759285104469687e+02,1.383577518672690e+02,-3.066479806614716e+01,2.506628277459239e+00];
+  const b=[-5.447609879822406e+01,1.615858368580409e+02,-1.556989798598866e+02,6.680131188771972e+01,-1.328068155288572e+01];
+  const c=[-7.784894002430293e-03,-3.223964580411365e-01,-2.400758277161838e+00,-2.549732539343734e+00,4.374664141464968e+00,2.938163982698783e+00];
+  const d=[7.784695709041462e-03,3.224671290700398e-01,2.445134137142996e+00,3.754408661907416e+00];
+  const plow = 0.02425, phigh = 1 - plow;
+  let q, r;
+  if(p < plow){ q = Math.sqrt(-2*Math.log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  if(p > phigh){ q = Math.sqrt(-2*Math.log(1-p));
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  q = p - 0.5; r = q*q;
+  return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+}
+function sigmaFromPass(passRate){
+  if(passRate >= 1) return 6;
+  if(passRate <= 0) return 0;
+  return Math.max(0, Math.min(6, normInv(passRate) + 1.5));
+}
+
+/* ---------------- computed stats ---------------- */
+function computeStats(){
+  const insp = getInspections(), defects = getDefects(), tasks = getTasks();
+  const today = todayStr();
+  const s = { insp, defects, tasks };
+
+  s.inspCount = insp.length;
+  s.passCount = insp.filter(i => scoreStatus(i.score) === 'Pass').length;
+  s.passRate = s.inspCount ? s.passCount / s.inspCount : null;
+  s.avgScore = s.inspCount ? insp.reduce((a,i) => a + Number(i.score), 0) / s.inspCount : null;
+  s.sigma = s.passRate === null ? null : sigmaFromPass(s.passRate);
+  s.dpmo = s.passRate === null ? null : Math.round((1 - s.passRate) * 1e6);
+
+  // monthly avg score (chronological)
+  const mm = {};
+  insp.forEach(i => { const k = monthKey(i.date); if(!k) return; (mm[k] = mm[k] || {sum:0,n:0}); mm[k].sum += Number(i.score); mm[k].n++; });
+  s.monthKeys = monthSeq(Object.keys(mm).sort());
+  s.monthlyAvg = s.monthKeys.map(k => mm[k] ? +(mm[k].sum / mm[k].n).toFixed(1) : null);
+
+  // this month vs last month avg (delta on tiles) — computed from the month key,
+  // not via setMonth() (which overflows on the 29th-31st and compares a month to itself)
+  const nowK = monthKey(today);
+  const [ny, nmo] = nowK.split('-').map(Number);
+  const prevK = nmo === 1 ? (ny - 1) + '-12' : ny + '-' + pad2(nmo - 1);
+  s.avgThisMonth = mm[nowK] ? mm[nowK].sum / mm[nowK].n : null;
+  s.avgPrevMonth = mm[prevK] ? mm[prevK].sum / mm[prevK].n : null;
+
+  // defects
+  s.openDefects = defects.filter(d => d.status !== 'Resolved');
+  s.highOpen = s.openDefects.filter(d => d.priority === 'High').length;
+  const catCount = {};
+  defects.forEach(d => { const c = d.category || 'Uncategorized'; catCount[c] = (catCount[c] || 0) + 1; });
+  s.paretoCats = Object.entries(catCount).sort((a,b) => b[1] - a[1]);
+  const unitCount = {};
+  s.openDefects.forEach(d => { const u = d.unit || '—'; unitCount[u] = (unitCount[u] || 0) + 1; });
+  s.openByUnit = Object.entries(unitCount).sort((a,b) => b[1] - a[1]);
+  s.priCounts = ['High','Medium','Low'].map(p => defects.filter(d => d.priority === p).length);
+  s.statusCounts = ['Open','In Progress','Resolved'].map(st => defects.filter(d => d.status === st).length);
+  const dm = {};
+  defects.forEach(d => { const k = monthKey(d.date); if(k) dm[k] = (dm[k] || 0) + 1; });
+  s.defMonthKeys = monthSeq(Object.keys(dm).sort());
+  s.defMonthly = s.defMonthKeys.map(k => dm[k] || 0);
+  const resolved = defects.filter(d => d.status === 'Resolved' && d.resolved && d.date);
+  s.mttr = resolved.length ? resolved.reduce((a,d) => a + Math.max(0, daysBetween(d.date, d.resolved)), 0) / resolved.length : null;
+
+  // tasks
+  s.taskTotal = tasks.length;
+  s.taskDone = tasks.filter(t => t.status === 'Done').length;
+  s.taskOverdue = tasks.filter(t => t.status !== 'Done' && t.due && t.due < today).length;
+  s.taskCompliance = s.taskTotal ? (s.taskTotal - s.taskOverdue) / s.taskTotal : null;
+
+  return s;
+}
+
+/* ---------------- chart plumbing ---------------- */
+const charts = {};
+const INK = { text:'#c3c2b7', muted:'#898781', grid:'#2c2c2a', surface:'#1a1a19' };
+function mkChart(key, cfg){
+  const el = $('ch-' + key);
+  if(!el || typeof Chart === 'undefined') return;
+  if(charts[key]){ charts[key].destroy(); delete charts[key]; }
+  charts[key] = new Chart(el, cfg);
+}
+function setChartEmpty(key, isEmpty){
+  const box = $('box-' + key);
+  if(!box) return;
+  box.classList.toggle('is-empty', !!isEmpty);
+  if(isEmpty && charts[key]){ charts[key].destroy(); delete charts[key]; }
+}
+function baseScales(yOpts){
+  return {
+    x: { grid: { display:false }, ticks: { color: INK.muted, maxRotation: 0, autoSkip: true } },
+    y: Object.assign({ grid: { color: INK.grid }, border: { display:false }, ticks: { color: INK.muted } }, yOpts || {})
+  };
+}
+const NO_LEGEND = { legend: { display:false } };
+const LEGEND = { legend: { display:true, labels: { color: INK.text, boxWidth: 12, boxHeight: 12, usePointStyle: true } } };
+
+function lineDs(label, data, color, extra){
+  return Object.assign({
+    label, data, borderColor: color, backgroundColor: color,
+    borderWidth: 2, tension: 0.3,
+    pointRadius: 4, pointBackgroundColor: color,
+    pointBorderColor: INK.surface, pointBorderWidth: 2
+  }, extra || {});
+}
+function flatDs(label, value, n, color){
+  return { label, data: new Array(n).fill(value), borderColor: color, backgroundColor: color,
+    borderWidth: 1.5, pointRadius: 0, pointHitRadius: 0, tension: 0 };
+}
+
+/* ---------------- label & datalist propagation ---------------- */
+function applyLabels(){
+  $('org-name').textContent = CFG.orgName || 'PulseBoard';
+  $$('.u-sing').forEach(el => el.textContent = CFG.unitSingular);
+  $$('.u-plur').forEach(el => el.textContent = CFG.unitPlural);
+  document.title = (CFG.orgName ? CFG.orgName + ' — ' : '') + 'PulseBoard';
+}
+function refreshDatalists(){
+  const fill = (dlId, arr) => { $(dlId).innerHTML = arr.map(v => `<option value="${esc(v)}">`).join(''); };
+  fill('dl-units', CFG.units);
+  fill('dl-categories', CFG.categories);
+  fill('dl-areas', CFG.areas);
+  fill('dl-people', CFG.people);
+}
+function fillFilterSelect(sel, values, allLabel){
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">${esc(allLabel)}</option>` + values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  if(values.includes(cur)) sel.value = cur;
+}
+
+/* ---------------- navigation ---------------- */
+const PAGES = {
+  overview:    { title: 'Overview',            sub: () => `Live quality picture across your ${CFG.unitPlural.toLowerCase()}` },
+  analytics:   { title: 'Six Sigma Analytics', sub: () => 'Sigma level, control limits and Pareto — computed from your records' },
+  inspections: { title: 'Inspections',         sub: () => 'Score walk-throughs and audits; pass/fail follows your thresholds' },
+  defects:     { title: 'Defects',             sub: () => 'Report problems, track them to resolution' },
+  tasks:       { title: 'Recurring Tasks',     sub: () => 'Preventive and scheduled work — overdue items are flagged' },
+  data:        { title: 'Data & Backup',       sub: () => 'Export, import, and reset. Data never leaves this browser.' },
+  settings:    { title: 'Settings',            sub: () => 'Make it yours — labels, lists, thresholds, custom KPIs' }
+};
+const renderers = {};
+let currentPage = 'overview';
+function navigate(pid){
+  if(!PAGES[pid]) return;
+  currentPage = pid;
+  $$('.page').forEach(p => p.classList.remove('active'));
+  $('page-' + pid).classList.add('active');
+  $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === pid));
+  $('page-title').textContent = PAGES[pid].title;
+  $('page-sub').textContent = PAGES[pid].sub();
+  renderers[pid]();
+}
+
+/* ================================================================
+   OVERVIEW
+   ================================================================ */
+function tile(lbl, val, sub, subClass){
+  return `<div class="tile"><div class="lbl">${esc(lbl)}</div><div class="val">${val}</div>${sub ? `<div class="sub ${subClass || ''}">${sub}</div>` : ''}</div>`;
+}
+renderers.overview = function(){
+  const s = computeStats();
+  const hasAny = s.inspCount || s.defects.length || s.taskTotal;
+  $('ov-empty').style.display = hasAny ? 'none' : 'block';
+  $('ov-content').style.display = hasAny ? 'contents' : 'none';
+  if(!hasAny) return;
+
+  // KPI tiles
+  let tiles = '';
+  if(s.passRate !== null){
+    let delta = '';
+    let cls = '';
+    if(s.avgThisMonth !== null && s.avgPrevMonth !== null){
+      const d = s.avgThisMonth - s.avgPrevMonth;
+      delta = `${d >= 0 ? '▲' : '▼'} ${Math.abs(d).toFixed(1)} pts avg vs last month`;
+      cls = d >= 0 ? 'up-good' : 'down-bad';
+    }
+    tiles += tile('Pass rate', (s.passRate * 100).toFixed(1) + '%', delta || `${s.passCount} of ${s.inspCount} inspections`, cls);
+    tiles += tile('Sigma level', s.sigma.toFixed(2) + 'σ', 'DPMO ' + s.dpmo.toLocaleString());
+  } else {
+    tiles += tile('Pass rate', '—', 'no inspections yet');
+  }
+  tiles += tile('Open defects', s.openDefects.length,
+    s.highOpen ? `${s.highOpen} high priority` : (s.defects.length ? 'none high priority' : 'none reported'),
+    s.highOpen ? 'down-bad' : '');
+  tiles += tile('Overdue tasks', s.taskOverdue, s.taskTotal ? `of ${s.taskTotal} scheduled` : 'no tasks yet', s.taskOverdue ? 'down-bad' : '');
+  (CFG.kpis || []).forEach(k => {
+    if(!k.label) return; // rows still being typed in the Settings editor
+    const suf = k.suffix || '';
+    const isPrefix = /^[$€£¥]/.test(suf.trim());
+    const withUnit = raw => isPrefix ? suf + raw : raw + suf;
+    let sub = '', cls = '';
+    const v = parseFloat(k.value), t = parseFloat(k.target);
+    if(!isNaN(t)){
+      sub = 'Target ' + withUnit(t);
+      if(!isNaN(v)){
+        const good = k.dir === 'down' ? v <= t : v >= t;
+        cls = good ? 'up-good' : 'down-bad';
+        sub = (good ? '✓ ' : '✗ ') + sub;
+      }
+    }
+    tiles += tile(k.label || 'KPI', esc(k.value ? withUnit(k.value) : '—'), esc(sub), cls);
+  });
+  $('kpi-row').innerHTML = tiles;
+
+  // trend line
+  setChartEmpty('ov-trend', !s.monthKeys.length);
+  if(s.monthKeys.length){
+    const present = s.monthlyAvg.filter(v => v !== null);
+    mkChart('ov-trend', { type:'line',
+      data:{ labels: s.monthKeys.map(monthLabel), datasets:[ lineDs('Avg score', s.monthlyAvg, '#3987e5', { fill:true, backgroundColor:'rgba(57,135,229,0.10)' }) ] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins: NO_LEGEND,
+        scales: baseScales({ suggestedMin: Math.max(0, Math.min(...present) - 10), suggestedMax: 100 }) }
+    });
+  }
+
+  // pareto
+  renderPareto('ov-pareto', s.paretoCats);
+
+  // open defects by unit (horizontal)
+  setChartEmpty('ov-unit', !s.openByUnit.length);
+  if(s.openByUnit.length){
+    mkChart('ov-unit', { type:'bar',
+      data:{ labels: s.openByUnit.map(x => x[0]), datasets:[{ label:'Open defects', data: s.openByUnit.map(x => x[1]),
+        backgroundColor:'#3987e5', maxBarThickness: 22, borderRadius: 4, borderSkipped: 'start' }] },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins: NO_LEGEND,
+        scales:{ x:{ grid:{ color: INK.grid }, border:{ display:false }, ticks:{ color: INK.muted, precision: 0 } },
+                 y:{ grid:{ display:false }, ticks:{ color: INK.text } } } }
+    });
+  }
+
+  // priority donut
+  const priTotal = s.priCounts.reduce((a,b) => a + b, 0);
+  setChartEmpty('ov-pri', !priTotal);
+  if(priTotal){
+    mkChart('ov-pri', { type:'doughnut',
+      data:{ labels:['High','Medium','Low'], datasets:[{ data: s.priCounts,
+        backgroundColor:['#d03b3b','#fab219','#898781'], borderColor: INK.surface, borderWidth: 2 }] },
+      options:{ responsive:true, maintainAspectRatio:false, cutout:'62%', plugins: LEGEND }
+    });
+  }
+
+  // recent activity
+  const acts = [];
+  s.insp.forEach(i => acts.push({ d: i.date, html: `<span class="when">${fmtDate(i.date)}</span> ✓ Inspection at <strong>${esc(i.unit || '—')}</strong>${i.area ? ' · ' + esc(i.area) : ''} — scored <strong>${esc(i.score)}</strong> (${scoreStatus(i.score)})` }));
+  s.defects.forEach(d => acts.push({ d: d.date, html: `<span class="when">${fmtDate(d.date)}</span> ⚠ ${esc(d.priority)} defect at <strong>${esc(d.unit || '—')}</strong> · ${esc(d.category || 'Uncategorized')} — ${esc(d.status)}` }));
+  acts.sort((a,b) => (b.d || '').localeCompare(a.d || ''));
+  $('ov-activity').innerHTML = acts.length
+    ? acts.slice(0, 8).map(a => `<div class="act-row">${a.html}</div>`).join('')
+    : '<div style="color:var(--muted)">Nothing logged yet.</div>';
+};
+
+function renderPareto(key, paretoCats){
+  setChartEmpty(key, !paretoCats.length);
+  if(!paretoCats.length) return;
+  const total = paretoCats.reduce((a,x) => a + x[1], 0);
+  const labels = paretoCats.map(x => x[0]);
+  const counts = paretoCats.map(x => x[1]);
+  const share = counts.map(c => +(c / total * 100).toFixed(1));
+  let run = 0;
+  const cum = counts.map(c => { run += c; return +(run / total * 100).toFixed(1); });
+  mkChart(key, { type:'bar',
+    data:{ labels, datasets:[
+      { type:'line', label:'Cumulative %', data: cum, order: 0,
+        borderColor:'#c98500', backgroundColor:'#c98500', borderWidth: 2, tension: 0.2,
+        pointRadius: 4, pointBackgroundColor:'#c98500', pointBorderColor: INK.surface, pointBorderWidth: 2 },
+      { label:'Share of defects %', data: share, order: 1,
+        backgroundColor:'#3987e5', maxBarThickness: 22, borderRadius: 4, borderSkipped: 'start' }
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins: Object.assign({}, LEGEND, {
+        tooltip:{ callbacks:{ label: ctx => ctx.datasetIndex === 1
+          ? ` ${counts[ctx.dataIndex]} defects (${ctx.parsed.y}%)`
+          : ` Cumulative ${ctx.parsed.y}%` } } }),
+      scales: { x: { grid: { display:false }, ticks: { color: INK.muted, autoSkip: false, maxRotation: 45, minRotation: 0 } },
+                y: { grid: { color: INK.grid }, border: { display:false }, min: 0, max: 100, ticks: { color: INK.muted, callback: v => v + '%' } } } }
+  });
+}
+
+/* ================================================================
+   INSPECTIONS
+   ================================================================ */
+let inspEditId = null;
+function inspScoreRead(){
+  const v = Number($('insp-score').value);
+  const st = scoreStatus(v);
+  const col = st === 'Pass' ? 'var(--good)' : st === 'Marginal' ? 'var(--warn)' : 'var(--crit)';
+  $('insp-score-val').innerHTML = `${v} / 100 — <span style="color:${col}">${st}</span>`;
+}
+function openInspForm(rec){
+  inspEditId = rec ? rec.id : null;
+  $('insp-form-title').textContent = rec ? 'Edit inspection' : 'Log inspection';
+  $('btn-insp-save').textContent = rec ? 'Update inspection' : 'Save inspection';
+  $('insp-date').value = rec ? rec.date : todayStr();
+  $('insp-unit').value = rec ? rec.unit : '';
+  $('insp-area').value = rec ? rec.area : '';
+  $('insp-inspector').value = rec ? rec.inspector : '';
+  $('insp-score').value = rec ? rec.score : 90;
+  $('insp-notes').value = rec ? rec.notes : '';
+  inspScoreRead();
+  $('insp-form-card').classList.add('open');
+  $('insp-unit').focus();
+}
+function saveInspection(){
+  const unit = $('insp-unit').value.trim();
+  if(!unit){ toast('⚠ ' + CFG.unitSingular + ' is required'); $('insp-unit').focus(); return; }
+  const list = getInspections();
+  const old = inspEditId ? list.find(x => x.id === inspEditId) : null;
+  const rec = {
+    id: inspEditId || uid(),
+    date: $('insp-date').value || todayStr(),
+    unit,
+    area: $('insp-area').value.trim(),
+    inspector: $('insp-inspector').value.trim(),
+    score: Number($('insp-score').value),
+    notes: $('insp-notes').value.trim(),
+    created: old && old.created ? old.created : Date.now()
+  };
+  rec.unit = learnValue('units', rec.unit) || rec.unit;
+  rec.area = learnValue('areas', rec.area);
+  rec.inspector = learnValue('people', rec.inspector);
+  const i = list.findIndex(x => x.id === rec.id);
+  if(i >= 0) list[i] = rec; else list.push(rec);
+  if(!setInspections(list)) return;
+  toast(inspEditId ? '✓ Inspection updated' : '✓ Inspection saved');
+  inspEditId = null;
+  openInspForm(null); // reset for rapid entry
+  renderers.inspections();
+}
+/* table + tiles react to filters; the by-unit chart only depends on the underlying
+   data, so it renders separately and isn't rebuilt on every search keystroke */
+function renderInspList(){
+  fillFilterSelect($('insp-f-unit'), CFG.units, 'All ' + CFG.unitPlural);
+
+  const fUnit = $('insp-f-unit').value;
+  const q = $('insp-f-search').value.trim().toLowerCase();
+  let rows = getInspections().slice().sort((a,b) => (b.date || '').localeCompare(a.date || '') || (b.created || 0) - (a.created || 0));
+  if(fUnit) rows = rows.filter(r => r.unit === fUnit);
+  if(q) rows = rows.filter(r => [r.notes, r.area, r.inspector, r.unit].join(' ').toLowerCase().includes(q));
+
+  // stats tiles (respect unit filter for count/avg)
+  const avg = rows.length ? rows.reduce((a,r) => a + Number(r.score), 0) / rows.length : null;
+  const pass = rows.length ? rows.filter(r => scoreStatus(r.score) === 'Pass').length / rows.length : null;
+  $('insp-stats').innerHTML =
+    tile('Inspections' + (fUnit ? ' · ' + fUnit : ''), rows.length, q ? 'matching search' : 'all time') +
+    tile('Average score', avg === null ? '—' : avg.toFixed(1), `pass at ≥ ${CFG.passThreshold}`) +
+    tile('Pass rate', pass === null ? '—' : (pass * 100).toFixed(1) + '%', '') +
+    tile('This month', rows.filter(r => monthKey(r.date) === monthKey(todayStr())).length, 'inspections logged');
+
+  $('insp-tbody').innerHTML = rows.slice(0, 200).map(r => {
+    const st = scoreStatus(r.score);
+    return `<tr>
+      <td class="num" style="white-space:nowrap">${fmtDate(r.date)}</td>
+      <td>${esc(r.unit)}</td><td>${esc(r.area) || '—'}</td><td>${esc(r.inspector) || '—'}</td>
+      <td class="num"><strong style="color:var(--text)">${esc(r.score)}</strong></td>
+      <td><span class="badge b-${st}">${st}</span></td>
+      <td style="max-width:280px">${esc(r.notes) || '—'}</td>
+      <td><div class="row-act">
+        <button class="icon-btn" data-act="edit" data-id="${esc(r.id)}" title="Edit">✎</button>
+        <button class="icon-btn" data-act="del" data-id="${esc(r.id)}" title="Delete">✕</button>
+      </div></td></tr>`;
+  }).join('') || `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px">No inspections${fUnit || q ? ' match the filters' : ' yet — click “＋ Log inspection” to add the first'}</td></tr>`;
+}
+function renderInspChart(){
+  // avg score by unit (unfiltered — comparison is the point)
+  const um = {};
+  getInspections().forEach(i => { const u = i.unit || '—'; (um[u] = um[u] || {sum:0,n:0}); um[u].sum += Number(i.score); um[u].n++; });
+  const byUnit = Object.entries(um).map(([u,x]) => [u, +(x.sum / x.n).toFixed(1)]).sort((a,b) => b[1] - a[1]);
+  setChartEmpty('insp-unit', !byUnit.length);
+  if(byUnit.length){
+    mkChart('insp-unit', { type:'bar',
+      data:{ labels: byUnit.map(x => x[0]), datasets:[{ label:'Avg score', data: byUnit.map(x => x[1]),
+        backgroundColor:'#3987e5', maxBarThickness: 22, borderRadius: 4, borderSkipped: 'start' }] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins: NO_LEGEND,
+        scales: baseScales({ min: 0, max: 100 }) }
+    });
+  }
+}
+renderers.inspections = function(){ renderInspChart(); renderInspList(); };
+
+/* ================================================================
+   DEFECTS
+   ================================================================ */
+let defEditId = null;
+function openDefForm(rec){
+  defEditId = rec ? rec.id : null;
+  $('def-form-title').textContent = rec ? 'Edit defect' : 'Report defect';
+  $('btn-def-save').textContent = rec ? 'Update defect' : 'Save defect';
+  $('def-date').value = rec ? rec.date : todayStr();
+  $('def-unit').value = rec ? rec.unit : '';
+  $('def-category').value = rec ? rec.category : '';
+  $('def-assignee').value = rec ? rec.assignee : '';
+  $('def-status').value = rec ? rec.status : 'Open';
+  $('def-notes').value = rec ? rec.notes : '';
+  const pri = rec ? rec.priority : 'Medium';
+  ({High:'pri-high', Medium:'pri-med', Low:'pri-low'})[pri] && ($(({High:'pri-high', Medium:'pri-med', Low:'pri-low'})[pri]).checked = true);
+  $('def-form-card').classList.add('open');
+  $('def-unit').focus();
+}
+function saveDefect(){
+  const unit = $('def-unit').value.trim();
+  if(!unit){ toast('⚠ ' + CFG.unitSingular + ' is required'); $('def-unit').focus(); return; }
+  const priEl = document.querySelector('input[name="defpri"]:checked');
+  const list = getDefects();
+  const old = defEditId ? list.find(x => x.id === defEditId) : null;
+  const status = $('def-status').value;
+  const rec = {
+    id: defEditId || uid(),
+    date: $('def-date').value || todayStr(),
+    unit,
+    category: $('def-category').value.trim() || 'Uncategorized',
+    priority: priEl ? priEl.value : 'Medium',
+    status,
+    assignee: $('def-assignee').value.trim(),
+    notes: $('def-notes').value.trim(),
+    resolved: status === 'Resolved' ? ((old && old.resolved) || todayStr()) : null,
+    created: old && old.created ? old.created : Date.now()
+  };
+  rec.unit = learnValue('units', rec.unit) || rec.unit;
+  rec.category = learnValue('categories', rec.category) || rec.category;
+  rec.assignee = learnValue('people', rec.assignee);
+  const i = list.findIndex(x => x.id === rec.id);
+  if(i >= 0) list[i] = rec; else list.push(rec);
+  if(!setDefects(list)) return;
+  toast(defEditId ? '✓ Defect updated' : '✓ Defect saved');
+  defEditId = null;
+  openDefForm(null);
+  renderers.defects();
+}
+function setDefectStatus(id, status){
+  const list = getDefects();
+  const d = list.find(x => x.id === id);
+  if(!d) return;
+  d.status = status;
+  d.resolved = status === 'Resolved' ? (d.resolved || todayStr()) : null;
+  setDefects(list);
+  renderers.defects();
+}
+renderers.defects = function(){
+  fillFilterSelect($('def-f-unit'), CFG.units, 'All ' + CFG.unitPlural);
+  fillFilterSelect($('def-f-category'), CFG.categories, 'All categories');
+
+  const fU = $('def-f-unit').value, fS = $('def-f-status').value, fP = $('def-f-priority').value, fC = $('def-f-category').value;
+  let rows = getDefects().slice().sort((a,b) => (b.date || '').localeCompare(a.date || '') || (b.created || 0) - (a.created || 0));
+  if(fU) rows = rows.filter(r => r.unit === fU);
+  if(fS) rows = rows.filter(r => r.status === fS);
+  if(fP) rows = rows.filter(r => r.priority === fP);
+  if(fC) rows = rows.filter(r => r.category === fC);
+
+  const open = rows.filter(r => r.status !== 'Resolved').length;
+  const high = rows.filter(r => r.priority === 'High' && r.status !== 'Resolved').length;
+  const resolved = rows.filter(r => r.status === 'Resolved');
+  $('def-stats').innerHTML =
+    tile('Matching defects', rows.length, 'with current filters') +
+    tile('Open', open, high ? `${high} high priority` : '', high ? 'down-bad' : '') +
+    tile('Resolved', resolved.length, '') +
+    tile('This month', rows.filter(r => monthKey(r.date) === monthKey(todayStr())).length, 'reported');
+
+  // charts respect the same filter slice — one filter row scopes the page
+  const stCounts = ['Open','In Progress','Resolved'].map(st => rows.filter(r => r.status === st).length);
+  const stTotal = stCounts.reduce((a,b) => a + b, 0);
+  setChartEmpty('def-status', !stTotal);
+  if(stTotal){
+    mkChart('def-status', { type:'doughnut',
+      data:{ labels:['Open','In Progress','Resolved'], datasets:[{ data: stCounts,
+        backgroundColor:['#ec835a','#fab219','#0ca30c'], borderColor: INK.surface, borderWidth: 2 }] },
+      options:{ responsive:true, maintainAspectRatio:false, cutout:'62%', plugins: LEGEND }
+    });
+  }
+  const cm = {};
+  rows.forEach(r => { const c = r.category || 'Uncategorized'; cm[c] = (cm[c] || 0) + 1; });
+  const cats = Object.entries(cm).sort((a,b) => b[1] - a[1]);
+  setChartEmpty('def-cat', !cats.length);
+  if(cats.length){
+    mkChart('def-cat', { type:'bar',
+      data:{ labels: cats.map(x => x[0]), datasets:[{ label:'Defects', data: cats.map(x => x[1]),
+        backgroundColor:'#3987e5', maxBarThickness: 22, borderRadius: 4, borderSkipped: 'start' }] },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins: NO_LEGEND,
+        scales:{ x:{ grid:{ color: INK.grid }, border:{ display:false }, ticks:{ color: INK.muted, precision: 0 } },
+                 y:{ grid:{ display:false }, ticks:{ color: INK.text } } } }
+    });
+  }
+
+  $('def-tbody').innerHTML = rows.slice(0, 200).map(r => `<tr>
+    <td class="num" style="white-space:nowrap">${fmtDate(r.date)}</td>
+    <td>${esc(r.unit)}</td><td>${esc(r.category)}</td>
+    <td><span class="badge b-${esc(r.priority)}">${esc(r.priority)}</span></td>
+    <td><select class="mini" data-act="status" data-id="${esc(r.id)}">
+      ${['Open','In Progress','Resolved'].map(st => `<option ${st === r.status ? 'selected' : ''}>${st}</option>`).join('')}
+    </select></td>
+    <td>${esc(r.assignee) || '—'}</td>
+    <td style="max-width:280px">${esc(r.notes) || '—'}</td>
+    <td><div class="row-act">
+      <button class="icon-btn" data-act="edit" data-id="${esc(r.id)}" title="Edit">✎</button>
+      <button class="icon-btn" data-act="del" data-id="${esc(r.id)}" title="Delete">✕</button>
+    </div></td></tr>`).join('')
+    || `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px">No defects match — that's either great news or missing filters 🎉</td></tr>`;
+};
+
+/* ================================================================
+   TASKS
+   ================================================================ */
+let taskEditId = null;
+function openTaskForm(rec){
+  taskEditId = rec ? rec.id : null;
+  $('task-form-title').textContent = rec ? 'Edit task' : 'Add recurring task';
+  $('btn-task-save').textContent = rec ? 'Update task' : 'Save task';
+  $('task-name').value = rec ? rec.name : '';
+  $('task-unit').value = rec ? rec.unit : '';
+  $('task-due').value = rec ? rec.due : todayStr();
+  $('task-freq').value = rec ? rec.freq : 'Weekly';
+  $('task-assignee').value = rec ? rec.assignee : '';
+  $('task-form-card').classList.add('open');
+  $('task-name').focus();
+}
+function saveTask(){
+  const name = $('task-name').value.trim();
+  if(!name){ toast('⚠ Task name is required'); $('task-name').focus(); return; }
+  const rec = {
+    id: taskEditId || uid(),
+    name,
+    unit: $('task-unit').value.trim(),
+    due: $('task-due').value || todayStr(),
+    freq: $('task-freq').value,
+    status: taskEditId ? (getTasks().find(t => t.id === taskEditId) || {}).status || 'Scheduled' : 'Scheduled',
+    assignee: $('task-assignee').value.trim()
+  };
+  rec.unit = learnValue('units', rec.unit);
+  rec.assignee = learnValue('people', rec.assignee);
+  const list = getTasks();
+  const i = list.findIndex(x => x.id === rec.id);
+  if(i >= 0) list[i] = rec; else list.push(rec);
+  if(!setTasks(list)) return;
+  toast(taskEditId ? '✓ Task updated' : '✓ Task added');
+  taskEditId = null;
+  $('task-form-card').classList.remove('open');
+  renderers.tasks();
+}
+/* advance a repeating task's due date when marked done; month steps clamp to the
+   target month's last day (Jan 31 + 1mo = Feb 28, not Mar 3) */
+function bumpDue(due, freq){
+  const [y,m,d] = due.split('-').map(Number);
+  if(freq === 'Daily' || freq === 'Weekly'){
+    return localDateStr(new Date(y, m-1, d + (freq === 'Daily' ? 1 : 7)));
+  }
+  const add = freq === 'Monthly' ? 1 : freq === 'Quarterly' ? 3 : 0;
+  if(!add) return null;
+  const total = (m - 1) + add;
+  const ty = y + Math.floor(total / 12), tm = total % 12;
+  const lastDay = new Date(ty, tm + 1, 0).getDate();
+  return localDateStr(new Date(ty, tm, Math.min(d, lastDay)));
+}
+function setTaskStatus(id, status){
+  const list = getTasks();
+  const t = list.find(x => x.id === id);
+  if(!t) return;
+  if(status === 'Done' && t.freq !== 'One-time'){
+    const next = bumpDue(t.due, t.freq);
+    if(next){ t.due = next; t.status = 'Scheduled'; toast(`✓ Done — next due ${fmtDate(next)}`); }
+  } else {
+    t.status = status;
+  }
+  setTasks(list);
+  renderers.tasks();
+}
+renderers.tasks = function(){
+  const s = computeStats();
+  const today = todayStr();
+  const compliance = s.taskCompliance;
+  $('task-stats').innerHTML =
+    tile('Tasks', s.taskTotal, 'scheduled + done') +
+    tile('Overdue', s.taskOverdue, s.taskOverdue ? 'needs attention' : 'all on track', s.taskOverdue ? 'down-bad' : 'up-good') +
+    tile('Done', s.taskDone, 'one-time tasks completed') +
+    `<div class="tile"><div class="lbl">On-time compliance</div><div class="val">${compliance === null ? '—' : (compliance * 100).toFixed(0) + '%'}</div><div class="meter"><div style="width:${compliance === null ? 0 : compliance * 100}%"></div></div></div>`;
+
+  const rows = getTasks().slice().sort((a,b) => (a.due || '').localeCompare(b.due || ''));
+  $('task-list').innerHTML = rows.map(t => {
+    const overdue = t.status !== 'Done' && t.due && t.due < today;
+    return `<div class="task-row ${overdue ? 'overdue' : ''}">
+      <div class="t-main">
+        <div class="t-name">${overdue ? '⚠ ' : ''}${esc(t.name)}</div>
+        <div class="t-meta">${esc(t.unit) || '—'} · ${esc(t.freq)} · due ${fmtDate(t.due)}${overdue ? ' · overdue' : ''}${t.assignee ? ' · ' + esc(t.assignee) : ''}</div>
+      </div>
+      <select class="mini" data-act="tstatus" data-id="${esc(t.id)}">
+        ${['Scheduled','Done'].map(st => `<option ${st === t.status ? 'selected' : ''}>${st}</option>`).join('')}
+      </select>
+      <div class="row-act">
+        <button class="icon-btn" data-act="edit" data-id="${esc(t.id)}" title="Edit">✎</button>
+        <button class="icon-btn" data-act="del" data-id="${esc(t.id)}" title="Delete">✕</button>
+      </div>
+    </div>`;
+  }).join('') || '<div style="color:var(--muted);padding:18px 0">No tasks yet. Add preventive maintenance, audits, anything on a schedule — repeating tasks roll their due date forward when you mark them done.</div>';
+};
+
+/* ================================================================
+   ANALYTICS
+   ================================================================ */
+renderers.analytics = function(){
+  const s = computeStats();
+
+  $('an-sigma').textContent = s.sigma === null ? '—' : s.sigma.toFixed(2) + 'σ';
+  $('an-dpmo').textContent = s.dpmo === null ? 'Log inspections to compute DPMO' : 'DPMO ' + s.dpmo.toLocaleString() + ' — defects per million opportunities';
+  $('an-pass').textContent = s.passRate === null ? '—' : (s.passRate * 100).toFixed(1) + '%';
+  $('an-mttr').textContent = s.mttr === null ? '—' : s.mttr.toFixed(1) + 'd';
+
+  // I-chart
+  const pts = s.insp.slice().sort((a,b) => (a.date || '').localeCompare(b.date || '')).slice(-60);
+  setChartEmpty('an-control', pts.length < 5);
+  if(pts.length >= 5){
+    const vals = pts.map(p => Number(p.score));
+    const mean = vals.reduce((a,b) => a + b, 0) / vals.length;
+    let mrSum = 0;
+    for(let i = 1; i < vals.length; i++) mrSum += Math.abs(vals[i] - vals[i-1]);
+    const sigmaEst = (mrSum / (vals.length - 1)) / 1.128;
+    const ucl = Math.min(100, mean + 3 * sigmaEst);
+    const lcl = Math.max(0, mean - 3 * sigmaEst);
+    const outOfControl = vals.map(v => v > ucl || v < lcl);
+    mkChart('an-control', { type:'line',
+      data:{ labels: pts.map(p => fmtDate(p.date)), datasets:[
+        Object.assign(lineDs('Score', vals, '#3987e5'), {
+          pointBackgroundColor: vals.map((v,i) => outOfControl[i] ? '#d03b3b' : '#3987e5'),
+          pointRadius: vals.map((v,i) => outOfControl[i] ? 5 : 3.5)
+        }),
+        flatDs('Mean', +mean.toFixed(1), vals.length, '#898781'),
+        flatDs('UCL', +ucl.toFixed(1), vals.length, '#d03b3b'),
+        flatDs('LCL', +lcl.toFixed(1), vals.length, '#d03b3b')
+      ]},
+      options:{ responsive:true, maintainAspectRatio:false, plugins: LEGEND,
+        scales: baseScales({ suggestedMin: Math.max(0, lcl - 8), suggestedMax: 100 }) }
+    });
+    const n = outOfControl.filter(Boolean).length;
+    $('an-control-note').textContent =
+      `Last ${vals.length} inspections · mean ${mean.toFixed(1)} · limits ${lcl.toFixed(1)}–${ucl.toFixed(1)} (±3σ via moving range). ` +
+      (n ? `${n} point${n > 1 ? 's' : ''} outside control limits — investigate special causes.` : 'Process is in statistical control.');
+  } else {
+    $('an-control-note').textContent = '';
+  }
+
+  // defects per month
+  setChartEmpty('an-defects', !s.defMonthKeys.length);
+  if(s.defMonthKeys.length){
+    mkChart('an-defects', { type:'bar',
+      data:{ labels: s.defMonthKeys.map(monthLabel), datasets:[{ label:'Defects', data: s.defMonthly,
+        backgroundColor:'#3987e5', maxBarThickness: 22, borderRadius: 4, borderSkipped: 'start' }] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins: NO_LEGEND,
+        scales: baseScales({ beginAtZero: true, ticks: { color: INK.muted, precision: 0 } }) }
+    });
+  }
+
+  renderPareto('an-pareto', s.paretoCats);
+};
+
+/* ================================================================
+   DATA & BACKUP
+   ================================================================ */
+function download(filename, text, mime){
+  const blob = new Blob([text], { type: mime || 'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function csv(rows){
+  return rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+}
+renderers.data = function(){
+  const s = computeStats();
+  let bytes = 0;
+  try{ Object.values(LS).forEach(k => { const v = localStorage.getItem(k); if(v) bytes += v.length; }); }catch(e){}
+  $('data-summary').innerHTML =
+    `<strong style="color:var(--text)">${s.inspCount}</strong> inspections · ` +
+    `<strong style="color:var(--text)">${s.defects.length}</strong> defects · ` +
+    `<strong style="color:var(--text)">${s.taskTotal}</strong> tasks · ` +
+    `${(bytes / 1024).toFixed(1)} KB in local storage. ` +
+    `<span style="color:var(--muted)">Clearing browser site data erases everything — download a backup if this matters.</span>`;
+};
+function exportJSON(){
+  const payload = { app: 'pulseboard', version: 1, exported: new Date().toISOString(),
+    config: CFG, inspections: getInspections(), defects: getDefects(), tasks: getTasks() };
+  download(`pulseboard-backup-${todayStr()}.json`, JSON.stringify(payload, null, 2), 'application/json');
+  toast('✓ Backup downloaded');
+}
+function importJSON(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const p = JSON.parse(reader.result);
+      const looksRight = p && (p.app === 'pulseboard' || Array.isArray(p.inspections) || Array.isArray(p.defects));
+      if(!looksRight) throw new Error('not a PulseBoard backup');
+      if(!confirm('Replace ALL current data with this backup?')) return;
+      // sanitize everything before it can be persisted: a malformed backup must
+      // not brick the app on reload or inject markup into the tables
+      if(p.config){ CFG = sanitizeConfig(p.config); saveConfig(); }
+      const ok = setInspections(sanitizeInspections(p.inspections))
+        && setDefects(sanitizeDefects(p.defects))
+        && setTasks(sanitizeTasks(p.tasks));
+      if(!ok) return;
+      toast('✓ Backup restored');
+      navigate('overview');
+    }catch(e){
+      toast('⚠ Import failed: ' + e.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ================================================================
+   SAMPLE DATA
+   ================================================================ */
+function randn(){ let u = 0, v = 0; while(!u) u = Math.random(); while(!v) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+function pick(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
+function genSample(){
+  const units = CFG.units.length ? CFG.units : ['North Building','South Building','East Wing','West Wing','Annex'];
+  const cats = CFG.categories.length ? CFG.categories : DEFAULT_CONFIG.categories.slice();
+  const areas = CFG.areas.length ? CFG.areas : ['Entrance','Restrooms','Common Area','Offices','Storage'];
+  const people = CFG.people.length ? CFG.people : ['Alex','Jordan','Sam','Riley'];
+  units.forEach(u => learnValue('units', u));
+  cats.forEach(c => learnValue('categories', c));
+  areas.forEach(a => learnValue('areas', a));
+  people.forEach(p => learnValue('people', p));
+
+  // per-unit quality bias so comparisons are interesting
+  const bias = {}; units.forEach((u,i) => bias[u] = (i % 3) * 3 - 2 + randn());
+
+  const insp = [];
+  for(let k = 0; k < 90; k++){
+    const unit = pick(units);
+    const score = Math.max(55, Math.min(100, Math.round(88 + bias[unit] + randn() * 6)));
+    const age = Math.floor(Math.random() * 180);
+    insp.push({ id: uid() + k, date: daysAgoStr(age), unit,
+      area: pick(areas), inspector: pick(people), score,
+      notes: score < CFG.marginalThreshold ? 'Follow-up required' : '',
+      created: Date.now() - age * 86400000 });
+  }
+  const defects = [];
+  const priPool = ['High','Medium','Medium','Medium','Low','Low'];
+  for(let k = 0; k < 32; k++){
+    const age = Math.floor(Math.random() * 180);
+    const date = daysAgoStr(age);
+    const resolvedIt = age > 10 ? Math.random() < 0.75 : Math.random() < 0.25;
+    const status = resolvedIt ? 'Resolved' : (Math.random() < 0.35 ? 'In Progress' : 'Open');
+    defects.push({ id: uid() + 'd' + k, date, unit: pick(units),
+      category: k < 12 ? cats[0] : pick(cats), // skew → a real Pareto shape
+      priority: pick(priPool), status, assignee: pick(people),
+      notes: 'Sample defect — replace with real reports',
+      resolved: status === 'Resolved' ? daysAgoStr(Math.max(0, age - (1 + Math.floor(Math.random() * 12)))) : null,
+      created: Date.now() - age * 86400000 });
+  }
+  const freqs = ['Weekly','Weekly','Monthly','Monthly','Quarterly','Daily'];
+  const tasks = [];
+  for(let k = 0; k < 10; k++){
+    const off = Math.floor(Math.random() * 40) - 8; // some overdue
+    tasks.push({ id: uid() + 't' + k, name: pick(['Deep clean','Filter replacement','Safety walk','Equipment check','Supply restock','Full audit']) + ' — ' + pick(areas).toLowerCase(),
+      unit: pick(units), due: daysAgoStr(-off), freq: pick(freqs),
+      status: 'Scheduled', assignee: pick(people) });
+  }
+  setInspections(insp); setDefects(defects); setTasks(tasks);
+  toast('🧪 Sample data loaded — clear it any time in Data & Backup');
+}
+
+/* ================================================================
+   SETTINGS
+   ================================================================ */
+const CHIP_SECTIONS = [
+  { key:'units', chips:'chips-units', input:'new-unit', btn:'btn-add-unit' },
+  { key:'categories', chips:'chips-categories', input:'new-category', btn:'btn-add-category' },
+  { key:'areas', chips:'chips-areas', input:'new-area', btn:'btn-add-area' },
+  { key:'people', chips:'chips-people', input:'new-person', btn:'btn-add-person' }
+];
+function renderChips(){
+  CHIP_SECTIONS.forEach(sec => {
+    $(sec.chips).innerHTML = CFG[sec.key].map((v,i) =>
+      `<span class="chip">${esc(v)}<button data-chip-key="${sec.key}" data-chip-i="${i}" title="Remove">✕</button></span>`
+    ).join('') || '<span style="color:var(--muted);font-size:12.5px">None yet — values you type into forms land here automatically.</span>';
+  });
+}
+function renderKpiEditor(){
+  $('kpi-editor').innerHTML = (CFG.kpis || []).map((k,i) => `
+    <div class="kpi-edit-row">
+      <input type="text" data-kf="label" data-ki="${i}" placeholder="Label (e.g. Cost / sq ft)" value="${esc(k.label)}">
+      <input type="text" data-kf="value" data-ki="${i}" placeholder="Value" value="${esc(k.value)}">
+      <input type="text" data-kf="suffix" data-ki="${i}" placeholder="Unit (%, $…)" value="${esc(k.suffix)}">
+      <input type="text" data-kf="target" data-ki="${i}" placeholder="Target" value="${esc(k.target)}">
+      <select data-kf="dir" data-ki="${i}">
+        <option value="up" ${k.dir !== 'down' ? 'selected' : ''}>Higher is better</option>
+        <option value="down" ${k.dir === 'down' ? 'selected' : ''}>Lower is better</option>
+      </select>
+      <button class="icon-btn" data-kpi-del="${i}" title="Remove">✕</button>
+    </div>`).join('') || '<div style="color:var(--muted);font-size:12.5px">No custom KPIs yet.</div>';
+}
+renderers.settings = function(){
+  $('set-org').value = CFG.orgName;
+  $('set-sing').value = CFG.unitSingular;
+  $('set-plur').value = CFG.unitPlural;
+  $('set-pass').value = CFG.passThreshold;
+  $('set-marginal').value = CFG.marginalThreshold;
+  renderChips();
+  renderKpiEditor();
+};
+function saveSettings(){
+  CFG.orgName = $('set-org').value.trim() || 'My Organization';
+  CFG.unitSingular = $('set-sing').value.trim() || 'Site';
+  CFG.unitPlural = $('set-plur').value.trim() || (CFG.unitSingular + 's');
+  const p = parseInt($('set-pass').value, 10), m = parseInt($('set-marginal').value, 10);
+  if(!isNaN(p)) CFG.passThreshold = Math.min(100, Math.max(1, p));
+  if(!isNaN(m)) CFG.marginalThreshold = Math.min(CFG.passThreshold - 1, Math.max(0, m));
+  saveConfig();
+  renderers.settings();
+  toast('✓ Settings saved');
+}
+function collectKpisFromEditor(){
+  const rows = {};
+  $$('#kpi-editor [data-kf]').forEach(el => {
+    const i = el.dataset.ki;
+    (rows[i] = rows[i] || {})[el.dataset.kf] = el.value;
+  });
+  // keep unlabeled rows: dropping them here would erase half-typed rows on
+  // "+ Add KPI" and desync DOM indices from CFG.kpis for the delete buttons
+  CFG.kpis = Object.keys(rows).sort((a,b) => a - b).map(i => ({
+    label: (rows[i].label || '').trim(), value: (rows[i].value || '').trim(),
+    suffix: (rows[i].suffix || '').trim(), target: (rows[i].target || '').trim(),
+    dir: rows[i].dir === 'down' ? 'down' : 'up'
+  }));
+}
+
+/* ================================================================
+   WIZARD
+   ================================================================ */
+let wizStep = 1;
+function wizShow(n){
+  wizStep = n;
+  [1,2,3].forEach(i => $('wiz-s' + i).classList.toggle('active', i === n));
+  $$('#wiz-dots span').forEach((d,i) => d.classList.toggle('on', i < n));
+  $('wiz-back').style.display = n > 1 ? '' : 'none';
+  $('wiz-next').style.display = n < 3 ? '' : 'none';
+  if(n === 2) $('wiz-s2-label').textContent = $('wiz-plur').value || 'Sites';
+}
+function wizFinish(withSample){
+  CFG.orgName = $('wiz-org').value.trim() || 'My Organization';
+  CFG.unitSingular = $('wiz-sing').value.trim() || 'Site';
+  CFG.unitPlural = $('wiz-plur').value.trim() || (CFG.unitSingular + 's');
+  const lines = t => t.split('\n').map(x => x.trim()).filter(Boolean);
+  const units = lines($('wiz-units').value);
+  const cats = lines($('wiz-cats').value);
+  if(units.length) CFG.units = units;
+  if(cats.length) CFG.categories = cats;
+  CFG.setupDone = true;
+  saveConfig();
+  if(withSample) genSample();
+  $('wizard').classList.remove('open');
+  navigate('overview');
+  if(!withSample) toast(`Welcome! Log your first inspection from the Inspections page.`);
+}
+
+/* ================================================================
+   EVENT WIRING
+   ================================================================ */
+function init(){
+  // nav
+  $$('.nav-item').forEach(el => el.addEventListener('click', () => navigate(el.dataset.page)));
+
+  // ---- overview
+  $('btn-ov-sample').addEventListener('click', () => { genSample(); renderers.overview(); });
+
+  // ---- inspections
+  $('btn-insp-new').addEventListener('click', () => openInspForm(null));
+  $('btn-insp-cancel').addEventListener('click', () => { inspEditId = null; $('insp-form-card').classList.remove('open'); });
+  $('btn-insp-save').addEventListener('click', saveInspection);
+  $('insp-score').addEventListener('input', inspScoreRead);
+  $('insp-f-unit').addEventListener('change', renderInspList);
+  $('insp-f-search').addEventListener('input', renderInspList);
+  $('insp-tbody').addEventListener('click', e => {
+    const b = e.target.closest('[data-act]'); if(!b) return;
+    const id = b.dataset.id;
+    if(b.dataset.act === 'del'){
+      if(confirm('Delete this inspection?')){
+        if(id === inspEditId){ inspEditId = null; $('insp-form-card').classList.remove('open'); }
+        setInspections(getInspections().filter(x => x.id !== id)); renderers.inspections(); toast('Deleted');
+      }
+    } else if(b.dataset.act === 'edit'){
+      const rec = getInspections().find(x => x.id === id); if(rec) openInspForm(rec);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  });
+
+  // ---- defects
+  $('btn-def-new').addEventListener('click', () => openDefForm(null));
+  $('btn-def-cancel').addEventListener('click', () => { defEditId = null; $('def-form-card').classList.remove('open'); });
+  $('btn-def-save').addEventListener('click', saveDefect);
+  ['def-f-unit','def-f-status','def-f-priority','def-f-category'].forEach(id => $(id).addEventListener('change', () => renderers.defects()));
+  $('def-tbody').addEventListener('click', e => {
+    const b = e.target.closest('[data-act]'); if(!b || b.dataset.act === 'status') return;
+    const id = b.dataset.id;
+    if(b.dataset.act === 'del'){
+      if(confirm('Delete this defect?')){
+        if(id === defEditId){ defEditId = null; $('def-form-card').classList.remove('open'); }
+        setDefects(getDefects().filter(x => x.id !== id)); renderers.defects(); toast('Deleted');
+      }
+    } else if(b.dataset.act === 'edit'){
+      const rec = getDefects().find(x => x.id === id); if(rec) openDefForm(rec);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  });
+  $('def-tbody').addEventListener('change', e => {
+    const sel = e.target.closest('select[data-act="status"]'); if(!sel) return;
+    setDefectStatus(sel.dataset.id, sel.value);
+  });
+
+  // ---- tasks
+  $('btn-task-new').addEventListener('click', () => openTaskForm(null));
+  $('btn-task-cancel').addEventListener('click', () => { taskEditId = null; $('task-form-card').classList.remove('open'); });
+  $('btn-task-save').addEventListener('click', saveTask);
+  $('task-list').addEventListener('click', e => {
+    const b = e.target.closest('button[data-act]'); if(!b) return;
+    const id = b.dataset.id;
+    if(b.dataset.act === 'del'){
+      if(confirm('Delete this task?')){
+        if(id === taskEditId){ taskEditId = null; $('task-form-card').classList.remove('open'); }
+        setTasks(getTasks().filter(x => x.id !== id)); renderers.tasks(); toast('Deleted');
+      }
+    } else if(b.dataset.act === 'edit'){
+      const rec = getTasks().find(x => x.id === id); if(rec) openTaskForm(rec);
+    }
+  });
+  $('task-list').addEventListener('change', e => {
+    const sel = e.target.closest('select[data-act="tstatus"]'); if(!sel) return;
+    setTaskStatus(sel.dataset.id, sel.value);
+  });
+
+  // ---- data
+  $('btn-exp-json').addEventListener('click', exportJSON);
+  $('btn-exp-insp-csv').addEventListener('click', () => {
+    const rows = [['Date', CFG.unitSingular, 'Area','Inspector','Score','Result','Notes']]
+      .concat(getInspections().map(r => [r.date, r.unit, r.area, r.inspector, r.score, scoreStatus(r.score), r.notes]));
+    download(`inspections-${todayStr()}.csv`, csv(rows), 'text/csv'); toast('✓ CSV downloaded');
+  });
+  $('btn-exp-def-csv').addEventListener('click', () => {
+    const rows = [['Date', CFG.unitSingular, 'Category','Priority','Status','Assignee','Resolved','Notes']]
+      .concat(getDefects().map(r => [r.date, r.unit, r.category, r.priority, r.status, r.assignee, r.resolved || '', r.notes]));
+    download(`defects-${todayStr()}.csv`, csv(rows), 'text/csv'); toast('✓ CSV downloaded');
+  });
+  $('btn-exp-task-csv').addEventListener('click', () => {
+    const rows = [['Task', CFG.unitSingular, 'Due','Frequency','Status','Assignee']]
+      .concat(getTasks().map(r => [r.name, r.unit, r.due, r.freq, r.status, r.assignee]));
+    download(`tasks-${todayStr()}.csv`, csv(rows), 'text/csv'); toast('✓ CSV downloaded');
+  });
+  $('btn-imp-json').addEventListener('click', () => {
+    const f = $('imp-file').files[0];
+    if(!f){ toast('⚠ Choose a backup file first'); return; }
+    importJSON(f);
+  });
+  $('btn-load-sample').addEventListener('click', () => {
+    if(getInspections().length || getDefects().length || getTasks().length){
+      if(!confirm('Loading sample data REPLACES all current inspections, defects AND tasks. Continue?')) return;
+    }
+    genSample(); renderers.data();
+  });
+  $('btn-clear-data').addEventListener('click', () => {
+    if(!confirm('Delete ALL inspections, defects and tasks? Settings are kept. This cannot be undone.')) return;
+    setInspections([]); setDefects([]); setTasks([]); renderers.data(); toast('Records cleared');
+  });
+  $('btn-reset-all').addEventListener('click', () => {
+    if(!confirm('Factory reset — delete ALL records AND settings?')) return;
+    try{ Object.values(LS).forEach(k => localStorage.removeItem(k)); }catch(e){}
+    location.reload();
+  });
+
+  // ---- settings
+  $('btn-save-settings').addEventListener('click', saveSettings);
+  CHIP_SECTIONS.forEach(sec => {
+    const add = () => {
+      const v = $(sec.input).value.trim();
+      if(!v) return;
+      learnValue(sec.key, v);
+      $(sec.input).value = '';
+      renderChips();
+    };
+    $(sec.btn).addEventListener('click', add);
+    $(sec.input).addEventListener('keydown', e => { if(e.key === 'Enter') add(); });
+  });
+  document.addEventListener('click', e => {
+    const chip = e.target.closest('[data-chip-key]');
+    if(chip){
+      CFG[chip.dataset.chipKey].splice(Number(chip.dataset.chipI), 1);
+      saveConfig(); renderChips();
+      return;
+    }
+    const kdel = e.target.closest('[data-kpi-del]');
+    if(kdel){
+      collectKpisFromEditor();
+      CFG.kpis.splice(Number(kdel.dataset.kpiDel), 1);
+      saveConfig(); renderKpiEditor();
+    }
+  });
+  $('btn-add-kpi').addEventListener('click', () => {
+    collectKpisFromEditor();
+    CFG.kpis.push({ label:'', value:'', suffix:'', target:'', dir:'up' });
+    renderKpiEditor();
+  });
+  $('btn-save-kpis').addEventListener('click', () => {
+    collectKpisFromEditor();
+    CFG.kpis = CFG.kpis.filter(k => k.label || k.value || k.target || k.suffix);
+    saveConfig(); renderKpiEditor(); toast('✓ KPIs saved');
+  });
+
+  // ---- wizard
+  $$('#wiz-presets .preset').forEach(b => b.addEventListener('click', () => {
+    $$('#wiz-presets .preset').forEach(x => x.classList.remove('sel'));
+    b.classList.add('sel');
+    $('wiz-sing').value = b.dataset.s;
+    $('wiz-plur').value = b.dataset.p;
+  }));
+  $('wiz-next').addEventListener('click', () => wizShow(Math.min(3, wizStep + 1)));
+  $('wiz-back').addEventListener('click', () => wizShow(Math.max(1, wizStep - 1)));
+  $('wiz-sample').addEventListener('click', () => wizFinish(true));
+  $('wiz-empty').addEventListener('click', () => wizFinish(false));
+
+  // ---- boot
+  applyLabels();
+  refreshDatalists();
+  inspScoreRead();
+  if(!CFG.setupDone){
+    $('wizard').classList.add('open');
+  }
+  navigate('overview');
+}
+
+/* Chart.js global defaults — set after wiring so a chart lib failure can't kill interactivity */
+try{
+  Chart.defaults.color = INK.text;
+  Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+  Chart.defaults.borderColor = INK.grid;
+  Chart.defaults.plugins.tooltip.backgroundColor = '#232322';
+  Chart.defaults.plugins.tooltip.borderColor = 'rgba(255,255,255,0.12)';
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.plugins.tooltip.titleColor = '#ffffff';
+  Chart.defaults.plugins.tooltip.bodyColor = '#c3c2b7';
+  Chart.defaults.plugins.tooltip.padding = 10;
+  Chart.defaults.plugins.tooltip.cornerRadius = 8;
+}catch(e){ console.warn('Chart.js not loaded — charts disabled, everything else works.', e); }
+
+init();
+</script>
+</body>
+</html>
