@@ -12,15 +12,17 @@ Most quality-tracking tools are either a spreadsheet you stop updating or enterp
 
 ## Quick start
 
-**Option 1 — just open it**
-Download this repo (green **Code** button → *Download ZIP*), unzip, double-click `index.html`. That's it.
+**Option 1 — use it right now**
+Open the hosted copy: **<https://wanderingbread0.github.io/pulseboard/>** — your data stays in *your* browser, nothing is sent anywhere.
 
-**Option 2 — GitHub Pages**
-Fork this repo → Settings → Pages → deploy from the `main` branch. Your dashboard is now at `https://<you>.github.io/pulseboard/` on any device.
+**Option 2 — just open it**
+Download this repo (green **Code** button → *Download ZIP*), unzip, double-click `index.html`. That's it — works offline.
 
-**Option 3 — local server**
+**Option 3 — host your own**
+Fork this repo → Settings → Pages → deploy from the `main` branch, and your copy lives at `https://<you>.github.io/pulseboard/`. Or run it locally:
+
 ```bash
-git clone https://github.com/<you>/pulseboard && cd pulseboard
+git clone https://github.com/WanderingBread0/pulseboard && cd pulseboard
 python3 -m http.server 8787
 # open http://localhost:8787
 ```
@@ -67,6 +69,12 @@ All data is stored in your browser's `localStorage` under `pb_*` keys, scoped to
 ## Contributing
 
 Issues and PRs welcome. The whole app is one file — read top to bottom: CSS → markup (one `<section>` per page) → JS (storage → stats → charts → per-page renderers → wiring).
+
+There's a headless-Chrome end-to-end suite covering the wizard, every page, all three record flows, the sigma math, and backup sanitization:
+
+```bash
+cd test && npm install && npm test   # needs Chrome; set CHROME=/path/to/chrome to override
+```
 
 ## License
 
