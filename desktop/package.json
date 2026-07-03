@@ -1,0 +1,37 @@
+{
+  "name": "pulseboard-desktop",
+  "productName": "PulseBoard",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Free, self-contained process quality dashboard — inspections, defects, tasks and Six Sigma analytics, all stored locally.",
+  "author": "PulseBoard contributors",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "prepare-app": "node copy-app.js",
+    "start": "npm run prepare-app && electron .",
+    "dist": "npm run prepare-app && electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "io.github.wanderingbread0.pulseboard",
+    "productName": "PulseBoard",
+    "files": ["main.js", "app/**/*"],
+    "directories": { "output": "dist", "buildResources": "build" },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Office",
+      "icon": "build/icon.png",
+      "maintainer": "PulseBoard contributors"
+    },
+    "win": {
+      "target": ["nsis", "zip"],
+      "icon": "build/icon.png"
+    },
+    "nsis": { "oneClick": true, "perMachine": false },
+    "publish": { "provider": "github", "owner": "WanderingBread0", "repo": "pulseboard", "releaseType": "release" }
+  }
+}

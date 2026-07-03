@@ -121,6 +121,15 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .icon-btn:hover{color:var(--text);background:var(--surface-2)}
 select.mini{width:auto;padding:3px 6px;font-size:12px;border-radius:6px}
 
+/* ---------- photos ---------- */
+.photo-strip{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.photo-thumb{position:relative;width:74px;height:74px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--surface-2)}
+.photo-thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer}
+.photo-thumb button{position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.65);border:none;color:#fff;border-radius:50%;width:20px;height:20px;line-height:1;font-size:11px;cursor:pointer}
+.photo-thumb button:hover{background:rgba(208,59,59,0.85)}
+#lightbox .modal{max-width:820px}
+#lightbox img{max-width:100%;border-radius:10px;display:block;margin:0 auto 12px}
+
 /* ---------- chips ---------- */
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
 .chip{display:inline-flex;align-items:center;gap:7px;background:var(--surface-2);border:1px solid var(--border);border-radius:20px;padding:4px 6px 4px 12px;font-size:12.5px;color:var(--text-2)}
@@ -210,7 +219,7 @@ select.mini{width:auto;padding:3px 6px;font-size:12px;border-radius:6px}
       <button class="nav-item" data-page="data"><span class="ic">⇅</span> Data &amp; Backup</button>
       <button class="nav-item" data-page="settings"><span class="ic">⚙</span> Settings</button>
     </nav>
-    <div class="side-foot">PulseBoard v1.0 · local‑only, no server</div>
+    <div class="side-foot">PulseBoard v1.1 · local‑only, no server</div>
   </aside>
 
   <main>
@@ -275,6 +284,11 @@ select.mini{width:auto;padding:3px 6px;font-size:12px;border-radius:6px}
             <div class="score-read" id="insp-score-val"></div>
           </div>
           <div class="fld full"><label>Notes</label><textarea id="insp-notes" placeholder="Optional findings, follow-ups…"></textarea></div>
+          <div class="fld full"><label>Photos</label>
+            <div class="photo-strip" id="insp-photo-strip"></div>
+            <input type="file" id="insp-photo-input" accept="image/*" multiple style="display:none">
+            <button class="btn-ghost btn-sm" id="btn-insp-photo" type="button">📷 Add photos</button>
+          </div>
         </div>
         <div class="form-actions">
           <button class="btn" id="btn-insp-save">Save inspection</button>
@@ -333,6 +347,11 @@ select.mini{width:auto;padding:3px 6px;font-size:12px;border-radius:6px}
             <select id="def-status"><option>Open</option><option>In Progress</option><option>Resolved</option></select>
           </div>
           <div class="fld full"><label>Description</label><textarea id="def-notes" placeholder="What's wrong?"></textarea></div>
+          <div class="fld full"><label>Photos</label>
+            <div class="photo-strip" id="def-photo-strip"></div>
+            <input type="file" id="def-photo-input" accept="image/*" multiple style="display:none">
+            <button class="btn-ghost btn-sm" id="btn-def-photo" type="button">📷 Add photos</button>
+          </div>
         </div>
         <div class="form-actions">
           <button class="btn" id="btn-def-save">Save defect</button>
@@ -434,6 +453,7 @@ select.mini{width:auto;padding:3px 6px;font-size:12px;border-radius:6px}
       <div class="card">
         <h3>Your data, at a glance</h3>
         <div id="data-summary" style="color:var(--text-2);font-size:13.5px"></div>
+        <div id="data-photo-note" style="color:var(--text-2);font-size:13.5px;margin-top:6px"></div>
       </div>
       <div class="grid-2">
         <div class="card">
@@ -482,6 +502,15 @@ select.mini{width:auto;padding:3px 6px;font-size:12px;border-radius:6px}
           <div class="frm">
             <div class="fld"><label>Singular (e.g. Store)</label><input type="text" id="set-sing"></div>
             <div class="fld"><label>Plural (e.g. Stores)</label><input type="text" id="set-plur"></div>
+          </div>
+        </div>
+        <div class="set-sec">
+          <h4>Photos</h4>
+          <div class="hint">Photos attached to inspections and defects are compressed before storing. Larger sizes look better but fill local storage faster.</div>
+          <div class="frm">
+            <div class="fld"><label>Max photos per record</label><input type="number" id="set-photo-max" min="1" max="12"></div>
+            <div class="fld"><label>Max size (long edge, px)</label><input type="number" id="set-photo-dim" min="480" max="4096" step="80"></div>
+            <div class="fld"><label>JPEG quality %</label><input type="number" id="set-photo-q" min="30" max="95"></div>
           </div>
         </div>
         <div class="set-sec">
@@ -543,6 +572,17 @@ select.mini{width:auto;padding:3px 6px;font-size:12px;border-radius:6px}
 <datalist id="dl-people"></datalist>
 
 <div id="toast"></div>
+
+<!-- ============ PHOTO LIGHTBOX ============ -->
+<div class="modal-backdrop" id="lightbox">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h2 style="font-size:16px">Photos</h2>
+      <button class="btn-ghost btn-sm" id="lightbox-close">Close</button>
+    </div>
+    <div id="lightbox-body"></div>
+  </div>
+</div>
 
 <!-- ============ SETUP WIZARD ============ -->
 <div class="modal-backdrop" id="wizard">
@@ -631,6 +671,9 @@ const DEFAULT_CONFIG = {
   people: [],
   passThreshold: 85,
   marginalThreshold: 75,
+  photoMax: 4,
+  photoMaxDim: 1280,
+  photoQuality: 70,
   kpis: []
 };
 /* Coerce any loaded/imported config to the exact shape the app expects —
@@ -643,6 +686,9 @@ function sanitizeConfig(raw){
   ['units','categories','areas','people'].forEach(k => { if(Array.isArray(raw[k])) c[k] = raw[k].map(x => sanStr(x).trim()).filter(Boolean); });
   c.passThreshold = sanNum(raw.passThreshold, 1, 100, c.passThreshold);
   c.marginalThreshold = sanNum(raw.marginalThreshold, 0, c.passThreshold - 1, Math.min(c.marginalThreshold, c.passThreshold - 1));
+  c.photoMax = sanNum(raw.photoMax, 1, 12, c.photoMax);
+  c.photoMaxDim = sanNum(raw.photoMaxDim, 480, 4096, c.photoMaxDim);
+  c.photoQuality = sanNum(raw.photoQuality, 30, 95, c.photoQuality);
   if(Array.isArray(raw.kpis)) c.kpis = raw.kpis.filter(k => k && typeof k === 'object').map(k => ({
     label: sanStr(k.label), value: sanStr(k.value), suffix: sanStr(k.suffix),
     target: sanStr(k.target), dir: k.dir === 'down' ? 'down' : 'up' }));
@@ -724,15 +770,17 @@ function sanId(v){ const s = sanStr(v); return /^[A-Za-z0-9_-]{1,40}$/.test(s) ?
 function sanNum(v, lo, hi, fb){ const n = Number(v); return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fb; }
 function sanEnum(v, list, fb){ return list.includes(v) ? v : fb; }
 function sanRecords(arr, mapFn){ return (Array.isArray(arr) ? arr : []).filter(r => r && typeof r === 'object').map(mapFn); }
+function sanIdList(v){ return Array.isArray(v) ? v.map(sanStr).filter(s => /^[A-Za-z0-9_-]{1,40}$/.test(s)) : []; }
 function sanitizeInspections(arr){ return sanRecords(arr, r => ({ id: sanId(r.id), date: sanDate(r.date) || todayStr(),
   unit: sanStr(r.unit), area: sanStr(r.area), inspector: sanStr(r.inspector),
-  score: sanNum(r.score, 0, 100, 0), notes: sanStr(r.notes), created: sanNum(r.created, 0, 9e15, 0) })); }
+  score: sanNum(r.score, 0, 100, 0), notes: sanStr(r.notes), photos: sanIdList(r.photos),
+  created: sanNum(r.created, 0, 9e15, 0) })); }
 function sanitizeDefects(arr){ return sanRecords(arr, r => ({ id: sanId(r.id), date: sanDate(r.date) || todayStr(),
   unit: sanStr(r.unit), category: sanStr(r.category) || 'Uncategorized',
   priority: sanEnum(r.priority, ['High','Medium','Low'], 'Medium'),
   status: sanEnum(r.status, ['Open','In Progress','Resolved'], 'Open'),
   assignee: sanStr(r.assignee), notes: sanStr(r.notes), resolved: sanDate(r.resolved) || null,
-  created: sanNum(r.created, 0, 9e15, 0) })); }
+  photos: sanIdList(r.photos), created: sanNum(r.created, 0, 9e15, 0) })); }
 function sanitizeTasks(arr){ return sanRecords(arr, r => ({ id: sanId(r.id), name: sanStr(r.name) || 'Untitled task',
   unit: sanStr(r.unit), due: sanDate(r.due) || todayStr(),
   freq: sanEnum(r.freq, ['One-time','Daily','Weekly','Monthly','Quarterly'], 'One-time'),
@@ -760,6 +808,96 @@ function sigmaFromPass(passRate){
   if(passRate >= 1) return 6;
   if(passRate <= 0) return 0;
   return Math.max(0, Math.min(6, normInv(passRate) + 1.5));
+}
+
+/* ---------------- photo store (IndexedDB — big blobs stay out of localStorage) ---------------- */
+let _pdb = null;
+function photoDB(){
+  return new Promise((res, rej) => {
+    if(_pdb) return res(_pdb);
+    if(typeof indexedDB === 'undefined') return rej(new Error('photo storage unavailable'));
+    const req = indexedDB.open('pulseboard', 1);
+    req.onupgradeneeded = () => { const db = req.result; if(!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'id' }); };
+    req.onsuccess = () => { _pdb = req.result; res(_pdb); };
+    req.onerror = () => rej(req.error || new Error('photo storage blocked'));
+  });
+}
+function photoPut(rec){ return photoDB().then(db => new Promise((res, rej) => {
+  const tx = db.transaction('photos', 'readwrite'); tx.objectStore('photos').put(rec);
+  tx.oncomplete = () => res(rec.id); tx.onerror = () => rej(tx.error || new Error('photo save failed')); })); }
+function photoGet(id){ return photoDB().then(db => new Promise((res, rej) => {
+  const rq = db.transaction('photos').objectStore('photos').get(id);
+  rq.onsuccess = () => res(rq.result || null); rq.onerror = () => rej(rq.error); })); }
+function photoDel(ids){ if(!ids || !ids.length) return Promise.resolve();
+  return photoDB().then(db => new Promise(res => {
+    const tx = db.transaction('photos', 'readwrite'); ids.forEach(id => tx.objectStore('photos').delete(id));
+    tx.oncomplete = res; tx.onerror = res; })).catch(() => {}); }
+function photoAll(){ return photoDB().then(db => new Promise((res, rej) => {
+  const rq = db.transaction('photos').objectStore('photos').getAll();
+  rq.onsuccess = () => res(rq.result || []); rq.onerror = () => rej(rq.error); })).catch(() => []); }
+function photoClear(){ return photoDB().then(db => new Promise(res => {
+  const tx = db.transaction('photos', 'readwrite'); tx.objectStore('photos').clear();
+  tx.oncomplete = res; tx.onerror = res; })).catch(() => {}); }
+
+function compressImage(file){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const max = CFG.photoMaxDim || 1280;
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if(!w || !h) return rej(new Error('unreadable image'));
+      if(w > max || h > max){ const k = Math.min(max / w, max / h); w = Math.round(w * k); h = Math.round(h * k); }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      res(c.toDataURL('image/jpeg', (CFG.photoQuality || 70) / 100));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('not an image')); };
+    img.src = url;
+  });
+}
+
+/* per-form photo state: ids = attached to the open form, fresh = added this
+   session (deleted again if the form is cancelled) */
+const photoState = { insp: { ids: [], fresh: [] }, def: { ids: [], fresh: [] } };
+async function renderPhotoStrip(kind){
+  const st = photoState[kind];
+  const parts = await Promise.all(st.ids.map(async id => {
+    const p = await photoGet(id).catch(() => null);
+    if(!p) return '';
+    return `<div class="photo-thumb"><img src="${p.data}" alt="attached photo" data-view="${esc(id)}"><button data-rm="${esc(id)}" title="Remove" type="button">✕</button></div>`;
+  }));
+  $(kind + '-photo-strip').innerHTML = parts.join('');
+}
+async function addPhotos(kind, files){
+  const st = photoState[kind];
+  const room = CFG.photoMax - st.ids.length;
+  if(room <= 0){ toast(`⚠ Max ${CFG.photoMax} photos per record (raise it in Settings)`); return; }
+  const take = Array.from(files).slice(0, room);
+  if(take.length < files.length) toast(`⚠ Keeping ${take.length} — max ${CFG.photoMax} photos per record`);
+  for(const f of take){
+    try{
+      const data = await compressImage(f);
+      const id = uid();
+      await photoPut({ id, data, created: Date.now() });
+      st.ids.push(id); st.fresh.push(id);
+    }catch(e){ toast('⚠ Could not add photo: ' + e.message); }
+  }
+  renderPhotoStrip(kind);
+}
+function resetPhotos(kind, ids){ photoState[kind] = { ids: (ids || []).slice(), fresh: [] }; renderPhotoStrip(kind); }
+function discardFreshPhotos(kind){ photoDel(photoState[kind].fresh); photoState[kind] = { ids: [], fresh: [] }; }
+async function openLightbox(ids){
+  $('lightbox-body').innerHTML = '<div style="color:var(--muted)">Loading…</div>';
+  $('lightbox').classList.add('open');
+  const ps = await Promise.all((ids || []).map(id => photoGet(id).catch(() => null)));
+  $('lightbox-body').innerHTML = ps.filter(Boolean).map(p => `<img src="${p.data}" alt="attached photo">`).join('')
+    || '<div style="color:var(--muted)">No photos found.</div>';
+}
+function photoBadge(r){
+  return (r.photos && r.photos.length)
+    ? `<button class="icon-btn" data-act="photos" data-id="${esc(r.id)}" title="View photos">📷${r.photos.length}</button>` : '';
 }
 
 /* ---------------- computed stats ---------------- */
@@ -1040,6 +1178,7 @@ function openInspForm(rec){
   $('insp-inspector').value = rec ? rec.inspector : '';
   $('insp-score').value = rec ? rec.score : 90;
   $('insp-notes').value = rec ? rec.notes : '';
+  resetPhotos('insp', rec ? rec.photos : []);
   inspScoreRead();
   $('insp-form-card').classList.add('open');
   $('insp-unit').focus();
@@ -1057,6 +1196,7 @@ function saveInspection(){
     inspector: $('insp-inspector').value.trim(),
     score: Number($('insp-score').value),
     notes: $('insp-notes').value.trim(),
+    photos: photoState.insp.ids.slice(),
     created: old && old.created ? old.created : Date.now()
   };
   rec.unit = learnValue('units', rec.unit) || rec.unit;
@@ -1065,6 +1205,8 @@ function saveInspection(){
   const i = list.findIndex(x => x.id === rec.id);
   if(i >= 0) list[i] = rec; else list.push(rec);
   if(!setInspections(list)) return;
+  if(old && old.photos) photoDel(old.photos.filter(id => !rec.photos.includes(id)));
+  photoState.insp.fresh = [];
   toast(inspEditId ? '✓ Inspection updated' : '✓ Inspection saved');
   inspEditId = null;
   openInspForm(null); // reset for rapid entry
@@ -1099,6 +1241,7 @@ function renderInspList(){
       <td><span class="badge b-${st}">${st}</span></td>
       <td style="max-width:280px">${esc(r.notes) || '—'}</td>
       <td><div class="row-act">
+        ${photoBadge(r)}
         <button class="icon-btn" data-act="edit" data-id="${esc(r.id)}" title="Edit">✎</button>
         <button class="icon-btn" data-act="del" data-id="${esc(r.id)}" title="Delete">✕</button>
       </div></td></tr>`;
@@ -1135,6 +1278,7 @@ function openDefForm(rec){
   $('def-assignee').value = rec ? rec.assignee : '';
   $('def-status').value = rec ? rec.status : 'Open';
   $('def-notes').value = rec ? rec.notes : '';
+  resetPhotos('def', rec ? rec.photos : []);
   const pri = rec ? rec.priority : 'Medium';
   ({High:'pri-high', Medium:'pri-med', Low:'pri-low'})[pri] && ($(({High:'pri-high', Medium:'pri-med', Low:'pri-low'})[pri]).checked = true);
   $('def-form-card').classList.add('open');
@@ -1157,6 +1301,7 @@ function saveDefect(){
     assignee: $('def-assignee').value.trim(),
     notes: $('def-notes').value.trim(),
     resolved: status === 'Resolved' ? ((old && old.resolved) || todayStr()) : null,
+    photos: photoState.def.ids.slice(),
     created: old && old.created ? old.created : Date.now()
   };
   rec.unit = learnValue('units', rec.unit) || rec.unit;
@@ -1165,6 +1310,8 @@ function saveDefect(){
   const i = list.findIndex(x => x.id === rec.id);
   if(i >= 0) list[i] = rec; else list.push(rec);
   if(!setDefects(list)) return;
+  if(old && old.photos) photoDel(old.photos.filter(id => !rec.photos.includes(id)));
+  photoState.def.fresh = [];
   toast(defEditId ? '✓ Defect updated' : '✓ Defect saved');
   defEditId = null;
   openDefForm(null);
@@ -1234,6 +1381,7 @@ renderers.defects = function(){
     <td>${esc(r.assignee) || '—'}</td>
     <td style="max-width:280px">${esc(r.notes) || '—'}</td>
     <td><div class="row-act">
+      ${photoBadge(r)}
       <button class="icon-btn" data-act="edit" data-id="${esc(r.id)}" title="Edit">✎</button>
       <button class="icon-btn" data-act="del" data-id="${esc(r.id)}" title="Delete">✕</button>
     </div></td></tr>`).join('')
@@ -1417,16 +1565,25 @@ renderers.data = function(){
     `<strong style="color:var(--text)">${s.taskTotal}</strong> tasks · ` +
     `${(bytes / 1024).toFixed(1)} KB in local storage. ` +
     `<span style="color:var(--muted)">Clearing browser site data erases everything — download a backup if this matters.</span>`;
+  photoAll().then(ps => {
+    const mb = ps.reduce((a,p) => a + (p.data ? p.data.length : 0), 0) / 1024 / 1024;
+    $('data-photo-note').textContent = ps.length ? `Plus ${ps.length} photo${ps.length > 1 ? 's' : ''} (~${mb.toFixed(1)} MB). Photos are included in JSON backups.` : '';
+  });
 };
-function exportJSON(){
-  const payload = { app: 'pulseboard', version: 1, exported: new Date().toISOString(),
-    config: CFG, inspections: getInspections(), defects: getDefects(), tasks: getTasks() };
+async function exportJSON(){
+  const inspections = getInspections(), defects = getDefects();
+  const used = new Set();
+  inspections.concat(defects).forEach(r => (r.photos || []).forEach(id => used.add(id)));
+  const all = await photoAll();
+  const payload = { app: 'pulseboard', version: 2, exported: new Date().toISOString(),
+    config: CFG, inspections, defects, tasks: getTasks(),
+    photos: all.filter(p => used.has(p.id)).map(p => ({ id: p.id, data: p.data, created: p.created || 0 })) };
   download(`pulseboard-backup-${todayStr()}.json`, JSON.stringify(payload, null, 2), 'application/json');
   toast('✓ Backup downloaded');
 }
 function importJSON(file){
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try{
       const p = JSON.parse(reader.result);
       const looksRight = p && (p.app === 'pulseboard' || Array.isArray(p.inspections) || Array.isArray(p.defects));
@@ -1439,6 +1596,12 @@ function importJSON(file){
         && setDefects(sanitizeDefects(p.defects))
         && setTasks(sanitizeTasks(p.tasks));
       if(!ok) return;
+      const photos = (Array.isArray(p.photos) ? p.photos : [])
+        .filter(x => x && typeof x === 'object')
+        .map(x => ({ id: sanStr(x.id), data: sanStr(x.data), created: sanNum(x.created, 0, 9e15, 0) }))
+        .filter(x => /^[A-Za-z0-9_-]{1,40}$/.test(x.id) && /^data:image\//.test(x.data));
+      await photoClear();
+      for(const ph of photos) await photoPut(ph).catch(() => {});
       toast('✓ Backup restored');
       navigate('overview');
     }catch(e){
@@ -1539,6 +1702,9 @@ renderers.settings = function(){
   $('set-plur').value = CFG.unitPlural;
   $('set-pass').value = CFG.passThreshold;
   $('set-marginal').value = CFG.marginalThreshold;
+  $('set-photo-max').value = CFG.photoMax;
+  $('set-photo-dim').value = CFG.photoMaxDim;
+  $('set-photo-q').value = CFG.photoQuality;
   renderChips();
   renderKpiEditor();
 };
@@ -1549,6 +1715,9 @@ function saveSettings(){
   const p = parseInt($('set-pass').value, 10), m = parseInt($('set-marginal').value, 10);
   if(!isNaN(p)) CFG.passThreshold = Math.min(100, Math.max(1, p));
   if(!isNaN(m)) CFG.marginalThreshold = Math.min(CFG.passThreshold - 1, Math.max(0, m));
+  CFG.photoMax = sanNum($('set-photo-max').value, 1, 12, CFG.photoMax);
+  CFG.photoMaxDim = sanNum($('set-photo-dim').value, 480, 4096, CFG.photoMaxDim);
+  CFG.photoQuality = sanNum($('set-photo-q').value, 30, 95, CFG.photoQuality);
   saveConfig();
   renderers.settings();
   toast('✓ Settings saved');
@@ -1609,7 +1778,7 @@ function init(){
 
   // ---- inspections
   $('btn-insp-new').addEventListener('click', () => openInspForm(null));
-  $('btn-insp-cancel').addEventListener('click', () => { inspEditId = null; $('insp-form-card').classList.remove('open'); });
+  $('btn-insp-cancel').addEventListener('click', () => { inspEditId = null; discardFreshPhotos('insp'); $('insp-form-card').classList.remove('open'); });
   $('btn-insp-save').addEventListener('click', saveInspection);
   $('insp-score').addEventListener('input', inspScoreRead);
   $('insp-f-unit').addEventListener('change', renderInspList);
@@ -1620,17 +1789,22 @@ function init(){
     if(b.dataset.act === 'del'){
       if(confirm('Delete this inspection?')){
         if(id === inspEditId){ inspEditId = null; $('insp-form-card').classList.remove('open'); }
+        const gone = getInspections().find(x => x.id === id);
+        if(gone && gone.photos) photoDel(gone.photos);
         setInspections(getInspections().filter(x => x.id !== id)); renderers.inspections(); toast('Deleted');
       }
     } else if(b.dataset.act === 'edit'){
       const rec = getInspections().find(x => x.id === id); if(rec) openInspForm(rec);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if(b.dataset.act === 'photos'){
+      const rec = getInspections().find(x => x.id === id);
+      if(rec) openLightbox(rec.photos);
     }
   });
 
   // ---- defects
   $('btn-def-new').addEventListener('click', () => openDefForm(null));
-  $('btn-def-cancel').addEventListener('click', () => { defEditId = null; $('def-form-card').classList.remove('open'); });
+  $('btn-def-cancel').addEventListener('click', () => { defEditId = null; discardFreshPhotos('def'); $('def-form-card').classList.remove('open'); });
   $('btn-def-save').addEventListener('click', saveDefect);
   ['def-f-unit','def-f-status','def-f-priority','def-f-category'].forEach(id => $(id).addEventListener('change', () => renderers.defects()));
   $('def-tbody').addEventListener('click', e => {
@@ -1639,11 +1813,16 @@ function init(){
     if(b.dataset.act === 'del'){
       if(confirm('Delete this defect?')){
         if(id === defEditId){ defEditId = null; $('def-form-card').classList.remove('open'); }
+        const gone = getDefects().find(x => x.id === id);
+        if(gone && gone.photos) photoDel(gone.photos);
         setDefects(getDefects().filter(x => x.id !== id)); renderers.defects(); toast('Deleted');
       }
     } else if(b.dataset.act === 'edit'){
       const rec = getDefects().find(x => x.id === id); if(rec) openDefForm(rec);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if(b.dataset.act === 'photos'){
+      const rec = getDefects().find(x => x.id === id);
+      if(rec) openLightbox(rec.photos);
     }
   });
   $('def-tbody').addEventListener('change', e => {
@@ -1672,8 +1851,29 @@ function init(){
     setTaskStatus(sel.dataset.id, sel.value);
   });
 
+  // ---- photos
+  ['insp','def'].forEach(k => {
+    $('btn-' + k + '-photo').addEventListener('click', () => $(k + '-photo-input').click());
+    $(k + '-photo-input').addEventListener('change', e => { addPhotos(k, e.target.files); e.target.value = ''; });
+    $(k + '-photo-strip').addEventListener('click', e => {
+      const rm = e.target.closest('[data-rm]');
+      if(rm){
+        const id = rm.dataset.rm;
+        const st = photoState[k];
+        st.ids = st.ids.filter(x => x !== id);
+        if(st.fresh.includes(id)){ st.fresh = st.fresh.filter(x => x !== id); photoDel([id]); }
+        renderPhotoStrip(k);
+        return;
+      }
+      const v = e.target.closest('[data-view]');
+      if(v) openLightbox([v.dataset.view]);
+    });
+  });
+  $('lightbox-close').addEventListener('click', () => $('lightbox').classList.remove('open'));
+  $('lightbox').addEventListener('click', e => { if(e.target === $('lightbox')) $('lightbox').classList.remove('open'); });
+
   // ---- data
-  $('btn-exp-json').addEventListener('click', exportJSON);
+  $('btn-exp-json').addEventListener('click', () => { exportJSON().catch(e => toast('⚠ Export failed: ' + e.message)); });
   $('btn-exp-insp-csv').addEventListener('click', () => {
     const rows = [['Date', CFG.unitSingular, 'Area','Inspector','Score','Result','Notes']]
       .concat(getInspections().map(r => [r.date, r.unit, r.area, r.inspector, r.score, scoreStatus(r.score), r.notes]));
@@ -1701,13 +1901,14 @@ function init(){
     genSample(); renderers.data();
   });
   $('btn-clear-data').addEventListener('click', () => {
-    if(!confirm('Delete ALL inspections, defects and tasks? Settings are kept. This cannot be undone.')) return;
-    setInspections([]); setDefects([]); setTasks([]); renderers.data(); toast('Records cleared');
+    if(!confirm('Delete ALL inspections, defects, tasks and photos? Settings are kept. This cannot be undone.')) return;
+    setInspections([]); setDefects([]); setTasks([]); photoClear(); renderers.data(); toast('Records cleared');
   });
   $('btn-reset-all').addEventListener('click', () => {
     if(!confirm('Factory reset — delete ALL records AND settings?')) return;
     try{ Object.values(LS).forEach(k => localStorage.removeItem(k)); }catch(e){}
-    location.reload();
+    try{ if(_pdb){ _pdb.close(); _pdb = null; } indexedDB.deleteDatabase('pulseboard'); }catch(e){}
+    setTimeout(() => location.reload(), 150);
   });
 
   // ---- settings

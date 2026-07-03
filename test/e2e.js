@@ -280,6 +280,62 @@ const puppeteer = require('puppeteer-core');
     if (n !== first - 1) throw new Error(`count ${first} → ${n}`);
   });
 
+  // 19. attach a photo to a defect: compressed into IDB, badge + lightbox work
+  await check('defect photo attach + lightbox', async () => {
+    const fs = require('fs');
+    const tmpPng = path.join(__dirname, '.tmp-photo.png');
+    // 1x1 red pixel PNG
+    fs.writeFileSync(tmpPng, Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'));
+    await page.click('.nav-item[data-page="defects"]');
+    await sleep(200);
+    await page.click('#btn-def-new');
+    await page.$eval('#def-unit', el => el.value = 'Uptown');
+    await page.$eval('#def-notes', el => el.value = 'photo defect');
+    const input = await page.$('#def-photo-input');
+    await input.uploadFile(tmpPng);
+    await sleep(600);
+    const thumbs = await page.$$eval('#def-photo-strip .photo-thumb', els => els.length);
+    if (thumbs !== 1) throw new Error('thumbnail not rendered: ' + thumbs);
+    await page.click('#btn-def-save');
+    await sleep(300);
+    const res = await page.evaluate(async () => {
+      const d = JSON.parse(localStorage.getItem('pb_defects_v1')).find(x => x.notes === 'photo defect');
+      if (!d || !d.photos || d.photos.length !== 1) return 'record photos wrong: ' + JSON.stringify(d && d.photos);
+      const p = await photoGet(d.photos[0]);
+      if (!p || !p.data.startsWith('data:image/jpeg')) return 'photo not in IDB';
+      return 'OK';
+    });
+    if (res !== 'OK') throw new Error(res);
+    const badge = await page.$eval('#def-tbody', el => el.textContent.includes('📷1'));
+    if (!badge) throw new Error('photo badge missing in table');
+    await page.click('#def-tbody [data-act="photos"]');
+    await sleep(400);
+    const imgs = await page.$$eval('#lightbox img', els => els.length);
+    if (imgs !== 1) throw new Error('lightbox images: ' + imgs);
+    await page.click('#lightbox-close');
+    fs.unlinkSync(tmpPng);
+  });
+
+  // 20. photo settings roundtrip + backup payload carries photos
+  await check('photo settings + backup includes photos', async () => {
+    await page.click('.nav-item[data-page="settings"]');
+    await sleep(200);
+    await page.$eval('#set-photo-max', el => el.value = '2');
+    await page.click('#btn-save-settings');
+    await sleep(150);
+    const max = await page.evaluate(() => JSON.parse(localStorage.getItem('pb_config_v1')).photoMax);
+    if (max !== 2) throw new Error('photoMax not saved: ' + max);
+    const nPhotos = await page.evaluate(async () => {
+      const inspections = getInspections(), defects = getDefects();
+      const used = new Set();
+      inspections.concat(defects).forEach(r => (r.photos || []).forEach(id => used.add(id)));
+      const all = await photoAll();
+      return all.filter(p => used.has(p.id)).length;
+    });
+    if (nPhotos !== 1) throw new Error('export would carry ' + nPhotos + ' photos, want 1');
+  });
+
   // screenshots for the README
   const shotDir = process.env.SHOT_DIR;
   if (shotDir) {
