@@ -39,6 +39,7 @@ First launch runs a 30-second setup wizard: name your organization, say what you
 - **Defects** — report, prioritize, assign, filter, and resolve; resolution dates are stamped automatically.
 - **Photos** — attach photos to inspections and defects; they're compressed on-device (size/quality/limits configurable in Settings), viewable in a lightbox, and included in JSON backups.
 - **Recurring tasks** — weekly/monthly/quarterly work rolls its due date forward when you mark it done; overdue items are flagged.
+- **Click anything to drill in** — every KPI tile, chart bar, pie slice, and recent-activity row is clickable: it jumps you to the underlying records, filtered to exactly what you clicked (a Pareto category, a priority, a site, a single defect).
 - **Six Sigma analytics, computed for real** — process sigma level and DPMO from your pass rate (with the standard 1.5σ shift), an individuals control chart with ±3σ limits estimated via moving range, Pareto analysis, and mean time to resolve.
 - **Custom KPI tiles** — put any number you track elsewhere (cost/sq ft, uptime, NPS) on the overview with a target and a green/red check.
 - **Data is yours** — one-click JSON backup/restore and CSV exports for Excel/Sheets. Everything lives in `localStorage`; clear it from *Data & Backup* any time.

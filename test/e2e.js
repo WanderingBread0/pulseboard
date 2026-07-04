@@ -336,6 +336,72 @@ const puppeteer = require('puppeteer-core');
     if (nPhotos !== 1) throw new Error('export would carry ' + nPhotos + ' photos, want 1');
   });
 
+  // 21. drill-down: Overview "Open defects" tile → Defects page
+  await check('tile drill: open defects → defects page', async () => {
+    await page.click('.nav-item[data-page="overview"]');
+    await sleep(300);
+    const tile = await page.evaluateHandle(() => {
+      return [...document.querySelectorAll('#kpi-row .tile.clickable')]
+        .find(t => t.textContent.includes('Open defects'));
+    });
+    await tile.asElement().click();
+    await sleep(300);
+    const active = await page.$eval('#page-defects', el => el.classList.contains('active'));
+    if (!active) throw new Error('did not land on defects page');
+  });
+
+  // 22. drill-down: priority donut slice → Defects filtered by that priority
+  await check('chart drill: priority donut → filtered defects', async () => {
+    await page.click('.nav-item[data-page="overview"]');
+    await sleep(350);
+    // invoke the chart's onClick the way Chart.js would, with a synthetic element
+    const applied = await page.evaluate(() => {
+      const ch = charts['ov-pri'];
+      if (!ch) return 'no chart';
+      ch.options.onClick(null, [{ index: 0, datasetIndex: 0 }], ch); // index 0 = High
+      return document.getElementById('def-f-priority').value;
+    });
+    if (applied !== 'High') throw new Error('priority filter not applied: ' + applied);
+    const active = await page.$eval('#page-defects', el => el.classList.contains('active'));
+    if (!active) throw new Error('not on defects page');
+    // every visible row should be High priority
+    const allHigh = await page.$$eval('#def-tbody tr', trs =>
+      trs.every(tr => tr.textContent.includes('High') || tr.children.length < 4));
+    if (!allHigh) throw new Error('rows not filtered to High');
+  });
+
+  // 23. drill-down: Pareto category bar → Defects filtered by category
+  await check('chart drill: pareto category → filtered defects', async () => {
+    await page.click('.nav-item[data-page="overview"]');
+    await sleep(350);
+    const res = await page.evaluate(() => {
+      const ch = charts['ov-pareto'];
+      if (!ch) return { err: 'no chart' };
+      const cat = ch.data.labels[0];
+      ch.options.onClick(null, [{ index: 0, datasetIndex: 1 }], ch);
+      return { cat, applied: document.getElementById('def-f-category').value };
+    });
+    if (res.err) throw new Error(res.err);
+    if (res.applied !== res.cat) throw new Error(`category filter ${res.applied} !== clicked ${res.cat}`);
+  });
+
+  // 24. drill-down: recent-activity row opens that record's edit form
+  await check('activity row opens its record', async () => {
+    await page.click('.nav-item[data-page="overview"]');
+    await sleep(350);
+    const row = await page.$('#ov-activity .act-row[data-id]');
+    const kind = await page.evaluate(el => el.dataset.kind, row);
+    await row.click();
+    await sleep(300);
+    const targetPage = kind === 'insp' ? 'inspections' : 'defects';
+    const active = await page.$eval(`#page-${targetPage}`, el => el.classList.contains('active'));
+    if (!active) throw new Error('did not navigate to ' + targetPage);
+    const formOpen = await page.$eval(`#${kind === 'insp' ? 'insp' : 'def'}-form-card`, el => el.classList.contains('open'));
+    if (!formOpen) throw new Error('record edit form did not open');
+    // close it so later checks start clean
+    await page.click(`#btn-${kind === 'insp' ? 'insp' : 'def'}-cancel`);
+  });
+
   // screenshots for the README
   const shotDir = process.env.SHOT_DIR;
   if (shotDir) {

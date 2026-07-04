@@ -1,7 +1,7 @@
 {
   "name": "pulseboard-desktop",
   "productName": "PulseBoard",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Free, self-contained process quality dashboard — inspections, defects, tasks and Six Sigma analytics, all stored locally.",
   "author": "PulseBoard contributors",

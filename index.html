@@ -62,6 +62,11 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
 .tile .sub{font-size:12px;color:var(--text-2)}
 .tile .sub.up-good{color:var(--good)}
 .tile .sub.down-bad{color:var(--s6)}
+.tile.clickable{cursor:pointer;transition:border-color .15s,transform .05s}
+.tile.clickable:hover{border-color:var(--s1)}
+.tile.clickable:active{transform:translateY(1px)}
+.tile.clickable::after{content:"›";position:absolute;top:10px;right:12px;color:var(--muted);font-size:15px}
+.tile{position:relative}
 .hero{font-size:52px;font-weight:600;line-height:1.1}
 .meter{height:8px;border-radius:4px;background:rgba(57,135,229,0.18);overflow:hidden;margin-top:8px}
 .meter>div{height:100%;border-radius:4px;background:var(--s1);transition:width .3s}
@@ -147,6 +152,8 @@ select.mini{width:auto;padding:3px 6px;font-size:12px;border-radius:6px}
 .task-row.overdue .t-name{color:#f08c8c}
 .act-row{display:flex;gap:10px;padding:9px 2px;border-bottom:1px solid var(--grid);font-size:13px;color:var(--text-2);align-items:baseline}
 .act-row .when{color:var(--muted);font-size:12px;white-space:nowrap;min-width:74px;font-variant-numeric:tabular-nums}
+.act-row.clickable{cursor:pointer;border-radius:6px;margin:0 -6px;padding-left:6px;padding-right:6px}
+.act-row.clickable:hover{background:rgba(255,255,255,0.04)}
 
 /* ---------- kpi editor ---------- */
 .kpi-edit-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.2fr auto;gap:8px;margin-bottom:8px;align-items:center}
@@ -219,7 +226,7 @@ select.mini{width:auto;padding:3px 6px;font-size:12px;border-radius:6px}
       <button class="nav-item" data-page="data"><span class="ic">⇅</span> Data &amp; Backup</button>
       <button class="nav-item" data-page="settings"><span class="ic">⚙</span> Settings</button>
     </nav>
-    <div class="side-foot">PulseBoard v1.1 · local‑only, no server</div>
+    <div class="side-foot">PulseBoard v1.2 · local‑only, no server</div>
   </aside>
 
   <main>
@@ -425,8 +432,8 @@ select.mini{width:auto;padding:3px 6px;font-size:12px;border-radius:6px}
           <div class="sub" style="color:var(--muted);margin-top:10px;font-size:12px">Computed from your inspection pass rate (score ≥ pass threshold), with the standard 1.5σ long-term shift.</div>
         </div>
         <div class="grid-4" style="grid-template-columns:1fr 1fr;align-content:start">
-          <div class="tile"><div class="lbl">First-pass yield</div><div class="val" id="an-pass">—</div><div class="sub">inspections at or above pass threshold</div></div>
-          <div class="tile"><div class="lbl">Avg days to resolve</div><div class="val" id="an-mttr">—</div><div class="sub">resolved defects, found → fixed</div></div>
+          <div class="tile clickable" data-drill="inspections"><div class="lbl">First-pass yield</div><div class="val" id="an-pass">—</div><div class="sub">inspections at or above pass threshold</div></div>
+          <div class="tile clickable" data-drill='defects:{"status":"Resolved"}'><div class="lbl">Avg days to resolve</div><div class="val" id="an-mttr">—</div><div class="sub">resolved defects, found → fixed</div></div>
         </div>
       </div>
 
@@ -1035,10 +1042,62 @@ function navigate(pid){
 }
 
 /* ================================================================
+   DRILL-DOWN — anything you can see, you can click through to its records
+   ================================================================ */
+/* Jump to the Defects page with a filter slice applied. Unspecified filters are
+   cleared so the drill shows exactly what was clicked. */
+function drillToDefects(f){
+  f = f || {};
+  navigate('defects');
+  $('def-f-unit').value = f.unit || '';
+  $('def-f-status').value = f.status || '';
+  $('def-f-priority').value = f.priority || '';
+  $('def-f-category').value = f.category || '';
+  renderers.defects();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function drillToInspections(f){
+  f = f || {};
+  navigate('inspections');
+  $('insp-f-unit').value = f.unit || '';
+  $('insp-f-search').value = f.search || '';
+  renderInspList();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function openRecord(kind, id){
+  if(kind === 'insp'){ const r = getInspections().find(x => x.id === id); if(r){ navigate('inspections'); openInspForm(r); } }
+  else { const r = getDefects().find(x => x.id === id); if(r){ navigate('defects'); openDefForm(r); } }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+/* Spread into a chart's `options` to make its segments clickable + show a pointer.
+   handler receives the clicked data index. */
+function chartClick(handler){
+  return {
+    onClick: (evt, els) => { if(els && els.length) handler(els[0].index, els[0].datasetIndex); },
+    onHover: (evt, els) => { const t = evt && evt.native && evt.native.target; if(t) t.style.cursor = (els && els.length) ? 'pointer' : 'default'; }
+  };
+}
+
+/* ================================================================
    OVERVIEW
    ================================================================ */
-function tile(lbl, val, sub, subClass){
-  return `<div class="tile"><div class="lbl">${esc(lbl)}</div><div class="val">${val}</div>${sub ? `<div class="sub ${subClass || ''}">${sub}</div>` : ''}</div>`;
+function tile(lbl, val, sub, subClass, drill){
+  const cls = 'tile' + (drill ? ' clickable' : '');
+  const attr = drill ? ` data-drill="${esc(drill)}"` : '';
+  return `<div class="${cls}"${attr}><div class="lbl">${esc(lbl)}</div><div class="val">${val}</div>${sub ? `<div class="sub ${subClass || ''}">${sub}</div>` : ''}</div>`;
+}
+/* Resolve a tile's data-drill token ("page" or "page:{json}") to an action.
+   Split on the FIRST colon only — the JSON arg contains colons of its own. */
+function runDrill(token){
+  if(!token) return;
+  const idx = token.indexOf(':');
+  const page = idx === -1 ? token : token.slice(0, idx);
+  const arg = idx === -1 ? '' : token.slice(idx + 1);
+  let f = {};
+  if(arg){ try{ f = JSON.parse(arg); }catch(e){ f = {}; } }
+  if(page === 'defects') drillToDefects(f);
+  else if(page === 'inspections') drillToInspections(f);
+  else navigate(page);
 }
 renderers.overview = function(){
   const s = computeStats();
@@ -1057,15 +1116,16 @@ renderers.overview = function(){
       delta = `${d >= 0 ? '▲' : '▼'} ${Math.abs(d).toFixed(1)} pts avg vs last month`;
       cls = d >= 0 ? 'up-good' : 'down-bad';
     }
-    tiles += tile('Pass rate', (s.passRate * 100).toFixed(1) + '%', delta || `${s.passCount} of ${s.inspCount} inspections`, cls);
-    tiles += tile('Sigma level', s.sigma.toFixed(2) + 'σ', 'DPMO ' + s.dpmo.toLocaleString());
+    tiles += tile('Pass rate', (s.passRate * 100).toFixed(1) + '%', delta || `${s.passCount} of ${s.inspCount} inspections`, cls, 'inspections');
+    tiles += tile('Sigma level', s.sigma.toFixed(2) + 'σ', 'DPMO ' + s.dpmo.toLocaleString(), '', 'analytics');
   } else {
-    tiles += tile('Pass rate', '—', 'no inspections yet');
+    tiles += tile('Pass rate', '—', 'no inspections yet', '', 'inspections');
   }
   tiles += tile('Open defects', s.openDefects.length,
     s.highOpen ? `${s.highOpen} high priority` : (s.defects.length ? 'none high priority' : 'none reported'),
-    s.highOpen ? 'down-bad' : '');
-  tiles += tile('Overdue tasks', s.taskOverdue, s.taskTotal ? `of ${s.taskTotal} scheduled` : 'no tasks yet', s.taskOverdue ? 'down-bad' : '');
+    s.highOpen ? 'down-bad' : '',
+    s.highOpen ? 'defects:{"priority":"High"}' : 'defects');
+  tiles += tile('Overdue tasks', s.taskOverdue, s.taskTotal ? `of ${s.taskTotal} scheduled` : 'no tasks yet', s.taskOverdue ? 'down-bad' : '', 'tasks');
   (CFG.kpis || []).forEach(k => {
     if(!k.label) return; // rows still being typed in the Settings editor
     const suf = k.suffix || '';
@@ -1092,7 +1152,8 @@ renderers.overview = function(){
     mkChart('ov-trend', { type:'line',
       data:{ labels: s.monthKeys.map(monthLabel), datasets:[ lineDs('Avg score', s.monthlyAvg, '#3987e5', { fill:true, backgroundColor:'rgba(57,135,229,0.10)' }) ] },
       options:{ responsive:true, maintainAspectRatio:false, plugins: NO_LEGEND,
-        scales: baseScales({ suggestedMin: Math.max(0, Math.min(...present) - 10), suggestedMax: 100 }) }
+        scales: baseScales({ suggestedMin: Math.max(0, Math.min(...present) - 10), suggestedMax: 100 }),
+        ...chartClick(() => drillToInspections({})) }
     });
   }
 
@@ -1102,33 +1163,37 @@ renderers.overview = function(){
   // open defects by unit (horizontal)
   setChartEmpty('ov-unit', !s.openByUnit.length);
   if(s.openByUnit.length){
+    const unitLabels = s.openByUnit.map(x => x[0]);
     mkChart('ov-unit', { type:'bar',
-      data:{ labels: s.openByUnit.map(x => x[0]), datasets:[{ label:'Open defects', data: s.openByUnit.map(x => x[1]),
+      data:{ labels: unitLabels, datasets:[{ label:'Open defects', data: s.openByUnit.map(x => x[1]),
         backgroundColor:'#3987e5', maxBarThickness: 22, borderRadius: 4, borderSkipped: 'start' }] },
       options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins: NO_LEGEND,
         scales:{ x:{ grid:{ color: INK.grid }, border:{ display:false }, ticks:{ color: INK.muted, precision: 0 } },
-                 y:{ grid:{ display:false }, ticks:{ color: INK.text } } } }
+                 y:{ grid:{ display:false }, ticks:{ color: INK.text } } },
+        ...chartClick(i => drillToDefects({ unit: unitLabels[i] })) }
     });
   }
 
   // priority donut
+  const priLabels = ['High','Medium','Low'];
   const priTotal = s.priCounts.reduce((a,b) => a + b, 0);
   setChartEmpty('ov-pri', !priTotal);
   if(priTotal){
     mkChart('ov-pri', { type:'doughnut',
-      data:{ labels:['High','Medium','Low'], datasets:[{ data: s.priCounts,
+      data:{ labels: priLabels, datasets:[{ data: s.priCounts,
         backgroundColor:['#d03b3b','#fab219','#898781'], borderColor: INK.surface, borderWidth: 2 }] },
-      options:{ responsive:true, maintainAspectRatio:false, cutout:'62%', plugins: LEGEND }
+      options:{ responsive:true, maintainAspectRatio:false, cutout:'62%', plugins: LEGEND,
+        ...chartClick(i => drillToDefects({ priority: priLabels[i] })) }
     });
   }
 
-  // recent activity
+  // recent activity — each row opens its own record
   const acts = [];
-  s.insp.forEach(i => acts.push({ d: i.date, html: `<span class="when">${fmtDate(i.date)}</span> ✓ Inspection at <strong>${esc(i.unit || '—')}</strong>${i.area ? ' · ' + esc(i.area) : ''} — scored <strong>${esc(i.score)}</strong> (${scoreStatus(i.score)})` }));
-  s.defects.forEach(d => acts.push({ d: d.date, html: `<span class="when">${fmtDate(d.date)}</span> ⚠ ${esc(d.priority)} defect at <strong>${esc(d.unit || '—')}</strong> · ${esc(d.category || 'Uncategorized')} — ${esc(d.status)}` }));
+  s.insp.forEach(i => acts.push({ d: i.date, kind: 'insp', id: i.id, html: `<span class="when">${fmtDate(i.date)}</span> ✓ Inspection at <strong>${esc(i.unit || '—')}</strong>${i.area ? ' · ' + esc(i.area) : ''} — scored <strong>${esc(i.score)}</strong> (${scoreStatus(i.score)})` }));
+  s.defects.forEach(d => acts.push({ d: d.date, kind: 'def', id: d.id, html: `<span class="when">${fmtDate(d.date)}</span> ⚠ ${esc(d.priority)} defect at <strong>${esc(d.unit || '—')}</strong> · ${esc(d.category || 'Uncategorized')} — ${esc(d.status)}` }));
   acts.sort((a,b) => (b.d || '').localeCompare(a.d || ''));
   $('ov-activity').innerHTML = acts.length
-    ? acts.slice(0, 8).map(a => `<div class="act-row">${a.html}</div>`).join('')
+    ? acts.slice(0, 8).map(a => `<div class="act-row clickable" data-kind="${a.kind}" data-id="${esc(a.id)}" title="Open this record">${a.html}</div>`).join('')
     : '<div style="color:var(--muted)">Nothing logged yet.</div>';
 };
 
@@ -1154,7 +1219,8 @@ function renderPareto(key, paretoCats){
           ? ` ${counts[ctx.dataIndex]} defects (${ctx.parsed.y}%)`
           : ` Cumulative ${ctx.parsed.y}%` } } }),
       scales: { x: { grid: { display:false }, ticks: { color: INK.muted, autoSkip: false, maxRotation: 45, minRotation: 0 } },
-                y: { grid: { color: INK.grid }, border: { display:false }, min: 0, max: 100, ticks: { color: INK.muted, callback: v => v + '%' } } } }
+                y: { grid: { color: INK.grid }, border: { display:false }, min: 0, max: 100, ticks: { color: INK.muted, callback: v => v + '%' } } },
+      ...chartClick(i => drillToDefects({ category: labels[i] })) }
   });
 }
 
@@ -1252,13 +1318,15 @@ function renderInspChart(){
   const um = {};
   getInspections().forEach(i => { const u = i.unit || '—'; (um[u] = um[u] || {sum:0,n:0}); um[u].sum += Number(i.score); um[u].n++; });
   const byUnit = Object.entries(um).map(([u,x]) => [u, +(x.sum / x.n).toFixed(1)]).sort((a,b) => b[1] - a[1]);
+  const inspUnitLabels = byUnit.map(x => x[0]);
   setChartEmpty('insp-unit', !byUnit.length);
   if(byUnit.length){
     mkChart('insp-unit', { type:'bar',
-      data:{ labels: byUnit.map(x => x[0]), datasets:[{ label:'Avg score', data: byUnit.map(x => x[1]),
+      data:{ labels: inspUnitLabels, datasets:[{ label:'Avg score', data: byUnit.map(x => x[1]),
         backgroundColor:'#3987e5', maxBarThickness: 22, borderRadius: 4, borderSkipped: 'start' }] },
       options:{ responsive:true, maintainAspectRatio:false, plugins: NO_LEGEND,
-        scales: baseScales({ min: 0, max: 100 }) }
+        scales: baseScales({ min: 0, max: 100 }),
+        ...chartClick(i => drillToInspections({ unit: inspUnitLabels[i] })) }
     });
   }
 }
@@ -1349,25 +1417,29 @@ renderers.defects = function(){
   // charts respect the same filter slice — one filter row scopes the page
   const stCounts = ['Open','In Progress','Resolved'].map(st => rows.filter(r => r.status === st).length);
   const stTotal = stCounts.reduce((a,b) => a + b, 0);
+  const stLabels = ['Open','In Progress','Resolved'];
   setChartEmpty('def-status', !stTotal);
   if(stTotal){
     mkChart('def-status', { type:'doughnut',
-      data:{ labels:['Open','In Progress','Resolved'], datasets:[{ data: stCounts,
+      data:{ labels: stLabels, datasets:[{ data: stCounts,
         backgroundColor:['#ec835a','#fab219','#0ca30c'], borderColor: INK.surface, borderWidth: 2 }] },
-      options:{ responsive:true, maintainAspectRatio:false, cutout:'62%', plugins: LEGEND }
+      options:{ responsive:true, maintainAspectRatio:false, cutout:'62%', plugins: LEGEND,
+        ...chartClick(i => drillToDefects({ status: stLabels[i] })) }
     });
   }
   const cm = {};
   rows.forEach(r => { const c = r.category || 'Uncategorized'; cm[c] = (cm[c] || 0) + 1; });
   const cats = Object.entries(cm).sort((a,b) => b[1] - a[1]);
+  const catLabels = cats.map(x => x[0]);
   setChartEmpty('def-cat', !cats.length);
   if(cats.length){
     mkChart('def-cat', { type:'bar',
-      data:{ labels: cats.map(x => x[0]), datasets:[{ label:'Defects', data: cats.map(x => x[1]),
+      data:{ labels: catLabels, datasets:[{ label:'Defects', data: cats.map(x => x[1]),
         backgroundColor:'#3987e5', maxBarThickness: 22, borderRadius: 4, borderSkipped: 'start' }] },
       options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins: NO_LEGEND,
         scales:{ x:{ grid:{ color: INK.grid }, border:{ display:false }, ticks:{ color: INK.muted, precision: 0 } },
-                 y:{ grid:{ display:false }, ticks:{ color: INK.text } } } }
+                 y:{ grid:{ display:false }, ticks:{ color: INK.text } } },
+        ...chartClick(i => drillToDefects({ category: catLabels[i] })) }
     });
   }
 
@@ -1534,7 +1606,8 @@ renderers.analytics = function(){
       data:{ labels: s.defMonthKeys.map(monthLabel), datasets:[{ label:'Defects', data: s.defMonthly,
         backgroundColor:'#3987e5', maxBarThickness: 22, borderRadius: 4, borderSkipped: 'start' }] },
       options:{ responsive:true, maintainAspectRatio:false, plugins: NO_LEGEND,
-        scales: baseScales({ beginAtZero: true, ticks: { color: INK.muted, precision: 0 } }) }
+        scales: baseScales({ beginAtZero: true, ticks: { color: INK.muted, precision: 0 } }),
+        ...chartClick(() => drillToDefects({})) }
     });
   }
 
@@ -1772,6 +1845,17 @@ function wizFinish(withSample){
 function init(){
   // nav
   $$('.nav-item').forEach(el => el.addEventListener('click', () => navigate(el.dataset.page)));
+
+  // drill-down: any tile with data-drill (KPI row + analytics) jumps to its records
+  document.addEventListener('click', e => {
+    const t = e.target.closest('.tile.clickable[data-drill]');
+    if(t) runDrill(t.dataset.drill);
+  });
+  // recent-activity rows open their own record
+  $('ov-activity').addEventListener('click', e => {
+    const row = e.target.closest('.act-row[data-id]');
+    if(row) openRecord(row.dataset.kind, row.dataset.id);
+  });
 
   // ---- overview
   $('btn-ov-sample').addEventListener('click', () => { genSample(); renderers.overview(); });
